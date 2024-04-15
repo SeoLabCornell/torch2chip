@@ -64,6 +64,7 @@ class AdaRound(_QBase):
         
         # quantization
         xfloor = x.mul(self.scale).floor()
+        import pdb;pdb.set_trace()
         soft_shift = self.h()
 
         # quantize

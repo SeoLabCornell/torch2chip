@@ -8,7 +8,7 @@ model=resnet34
 epochs=50
 batch_size=128
 lr=1e-3
-loss=cross_entropy
+loss=mse
 weight_decay=1e-4
 dataset="imagenet"
 log_file="training.log"
@@ -16,7 +16,7 @@ log_file="training.log"
 wbit=8
 abit=8
 xqtype="lsq"
-wqtype="minmax_channel"
+wqtype="adaround"
 num_samples=1024
 ttype=ptq
 
@@ -45,4 +45,4 @@ python3 -W ignore ./imagenet/ptq.py \
     --resume ${pre_trained} \
     --train_dir "/share/seo/imagenet/train/" \
     --val_dir "/share/seo/imagenet/val/" \
-    --layer_trainer False \
+    --layer_trainer True \

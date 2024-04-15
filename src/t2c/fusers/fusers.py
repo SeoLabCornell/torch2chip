@@ -68,6 +68,8 @@ class LayerFuser(object):
         
         if isinstance(wq.observer, BaseChannelWiseObserver):
             sw = wq.scale.data.reshape(bn.weight.shape)
+        else:
+            sw = wq.scale.data
         
         # scaling
         sq = 1 / (sw * xq.scale)
