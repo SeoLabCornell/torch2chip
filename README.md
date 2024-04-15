@@ -2,11 +2,13 @@
 
 Torch2Chip is an End-to-end Deep Neural Network compression toolkit designed for prototype accelerator designer for algorithm-hardware co-design with high-degree of algorithm customization.
 
-## News & Update
+**[[Website] (coming soon)]()**  | **[[Documentation] (coming soon)]()**
 
-- **[04/15/2024]:** Initial version of Torch2Chip is published together with the camera-ready version of our **MLSys paper!**
+## :rocket: News & Update
 
-## Why Torch2Chip?
+- **[04/15/2024]:** Initial version of Torch2Chip is published together with the camera-ready version of our **MLSys paper!** :fire:
+
+## :question: Why Torch2Chip?
 
 The current "design-and-deploy" workflow faces under-explored challenges in the current hardware-algorithm co-design community due to some unavoidable flaws:
 
@@ -20,7 +22,7 @@ The current "design-and-deploy" workflow faces under-explored challenges in the 
 
 From the perspectives of the hardware designers, the conflicts from the DL framework, SoTA algorithm, and current toolkits formulate the cumbersome and iterative designation workflow of chip prototyping, **which is what Torch2Chip aim to resolve.**
 
-## What is Torch2Chip?
+## :star: What is Torch2Chip?
 
 Torch2Chip is a toolkit that enables **customized** model compression (e.g., quantization) with **full-stack observability** for customized hardware designers. Starting from the user-customized compression algorithms, Torch2Chip perfectly meet the bottom-level needs for the customized AI hardware designers: 
 
@@ -38,13 +40,13 @@ Torch2Chip is a toolkit that enables **customized** model compression (e.g., qua
 
 
 
-## Authors
+## :notes: Authors
 
 Members of [Seo Lab](https://seo.ece.cornell.edu/) @ Cornell University led by Professor Jae-sun Seo.
 
 [Jian Meng](https://mengjian0502.github.io/), Yuan Liao, Anupreetham, Ahmed Hasssan, Shixing Yu, Han-sok Suh, Xiaofeng Hu, and Jae-sun Seo.
 
-## Cite Us
+## :package: Cite Us
 **Publication:** *Torch2Chip: An End-to-end Customizable Deep Neural Network Compression and Deployment Toolkit for Prototype Hardware Accelerator Design* (Meng et al., MLSys, 2024).
 
 ### Acknowledgement
