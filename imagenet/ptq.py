@@ -111,7 +111,7 @@ def main():
 
     # convert the model to the compression-ready model
     converter = Vanilla4Compress(model, wbit=args.wbit, abit=args.abit)
-    model = converter.reload(wqtype=args.wqtype, xqtype=args.xqtype)
+    model = converter.convert()
     logger.info(model)
 
     # define the trainer

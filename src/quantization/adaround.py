@@ -4,6 +4,50 @@ Adaptive Round
 
 import torch
 from src.module.base import _QBase
+from src.quantization.observer import BaseObserver, lp_loss
+
+class AdaRoundObserver(BaseObserver):
+    def __init__(self, nbit: int, unsigned: bool = True):
+        super().__init__(nbit, unsigned)
+        
+    def quantize(self, x:torch.Tensor, xmin, xmax):
+        delta = (xmax - xmin) / (self.qub - self.qlb)
+
+        if self.unsigned:
+            zero_point = self.qlb - torch.round(xmin / delta)
+        else:
+            zero_point = torch.tensor(0.0)
+
+        xint = torch.round(x / delta)
+        xq = torch.clamp(xint - zero_point, self.qlb, self.qub)
+        xdq = (xq + zero_point) * delta
+        return xdq, delta, zero_point
+
+    def calculate_qparam(self, x: torch.Tensor):
+        # update the quantization boundary
+        self.get_bound(x)
+
+        # quantization parameters
+        scale, zero_point = torch.tensor(1.0), torch.tensor(0.0)
+        
+        best_loss = 1e+10
+        for i in range(100):
+            new_min = self.lb * (1.0 - (i * 0.01))
+            new_max = self.ub * (1.0 - (i * 0.01))
+
+            # quantize and dequantize for mse 
+            xdq, new_scale, new_zp = self.quantize(x, new_min, new_max)
+            loss = lp_loss(xdq, x, p=2.4, reduction='all')
+
+            if loss < best_loss:
+                best_loss = loss
+                scale, zero_point = new_scale, new_zp
+        
+        self.lb.data = new_min
+        self.ub.data = new_max
+
+        return scale, zero_point
+
 
 class AdaRound(_QBase):
     """
@@ -14,13 +58,6 @@ class AdaRound(_QBase):
         super().__init__(nbit, train_flag, unsigned)
         self.iter = 0
 
-        self.register_buffer("lb", weights.min())
-        self.register_buffer("ub", weights.max())
-
-        # integer boundary
-        self.qlb = -2**(self.nbit-1)
-        self.qub = 2**(self.nbit-1)-1
-
         # initialize the alpha
         self.init_flag = True
 
@@ -28,43 +65,35 @@ class AdaRound(_QBase):
         self.gamma, self.zeta = -0.1, 1.1
         self.beta = 2/3
 
+        # define the observer
+        self.observer = AdaRoundObserver(nbit=self.nbit, unsigned=self.unsigned)
+    
         # register the learnable parameters
         self.register_alpha(weights)
 
     def register_alpha(self, x:torch.Tensor):
-        xfloor = x.div(self.scale).floor()
+        self.register_buffer("delta", torch.tensor(1.0))
+
+        delta, zp = self.observer(x)
+
+        self.delta.copy_(delta)
+        self.scale.copy_(1 / delta)
+        self.zero_point.copy_(zp)
+
+        # find the optimal scaling factor first
+        xfloor = x.div(self.delta).floor()
 
         # compute alpha
-        diff = x.div(self.scale).sub(xfloor)
+        diff = x.div(self.delta).sub(xfloor)
         alpha = -torch.log((self.zeta - self.gamma) / (diff - self.gamma) - 1)
         self.register_parameter("alpha", torch.nn.Parameter(alpha))
-
-    def get_qparam(self, x:torch.Tensor):
-        lb = torch.min(self.lb, x.min())
-        ub = torch.max(self.lb, x.max())
-
-        # update boundary 
-        self.lb = lb.clone()
-        self.ub = ub.clone()
 
     def h(self):
         return torch.clamp(torch.sigmoid(self.alpha) * (self.zeta - self.gamma) + self.gamma, 0, 1)
     
     def q(self, x:torch.Tensor):
-        # scale = self.ub.sub(self.lb).div(self.qub - self.qlb)
-        scale = (self.qub - self.qlb) / self.ub.sub(self.lb)
-        zero_point = torch.tensor(0.0)
-
-        self.scale.copy_(scale)
-        self.zero_point.copy_(zero_point)
-
-        if self.init_flag:
-            self.register_alpha(x)
-            self.init_flag = False
-        
         # quantization
         xfloor = x.mul(self.scale).floor()
-        import pdb;pdb.set_trace()
         soft_shift = self.h()
 
         # quantize
@@ -74,9 +103,8 @@ class AdaRound(_QBase):
             xada = xfloor + self.alpha.ge(0.0).float()
 
         xq = xada + self.zero_point
-        
         # integer representation
-        output = torch.clamp(xq, self.qlb, self.qub).sub(self.zero_point)
+        output = torch.clamp(xq, self.observer.qlb, self.observer.qub).sub(self.zero_point)
 
         # dequantize
         if self.dequantize:
@@ -84,7 +112,6 @@ class AdaRound(_QBase):
         return output
     
     def trainFunc(self, input: torch.Tensor):
-        self.get_qparam(input)
         xq = self.q(input)
         return xq
 

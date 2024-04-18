@@ -18,6 +18,7 @@ xqtype="minmax_token"
 wqtype="minmax_channel"
 num_samples=512
 
+
 save_path="./save/${dataset}/BERT-BASE/${xqtype}_${wqtype}/BERT-BASE_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_all/"
 
 python3 -W ignore ./bert/sst2.py \

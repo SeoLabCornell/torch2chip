@@ -138,3 +138,12 @@ class BaseTokenWiseObserver(BaseObserver):
             # update bound
             self.lb.copy_(lb)
             self.ub.copy_(ub)
+
+def lp_loss(pred, target, p=2.0, reduction='none'):
+    """
+    loss function measured in lp norm
+    """
+    if reduction == 'none':
+        return (pred-target).abs().pow(p).sum(1).mean()
+    else:
+        return (pred-target).abs().pow(p).mean()

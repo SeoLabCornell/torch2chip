@@ -146,6 +146,9 @@ class T2C(object):
         for k, v in tqdm(self.node_dict.items()):
             x1, x2, y = v
 
+            print(f"{k} | x1min = {x1.min().item()}, x1max = {x1.max().item()}")
+            print(f"{k} | x2min = {x2.min().item()}, x2max = {x2.max().item()}")
+
             torch.save(x1.int().cpu(), os.path.join(tensor_dir, f"{k}_x1.pt"))
             torch.save(x2.int().cpu(), os.path.join(tensor_dir, f"{k}_x2.pt"))
             torch.save(y.int().cpu(), os.path.join(tensor_dir, f"{k}_y.pt"))

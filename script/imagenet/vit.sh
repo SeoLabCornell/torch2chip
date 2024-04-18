@@ -4,8 +4,8 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=vit_base
-epochs=50
+model=swin_base_patch4_window7_224
+epochs=1
 batch_size=100
 lr=1e-4
 loss=cross_entropy
@@ -15,10 +15,11 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="minmax_token"
+xqtype="lsq"
 wqtype="minmax_channel"
 num_samples=500
 ttype=qattn
+layer_train=True
 
 save_path="./save/${dataset}/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_all/"
 
@@ -43,3 +44,4 @@ python3 -W ignore ./imagenet/vit.py \
     --fine_tune \
     --train_dir "/share/seo/imagenet/train/" \
     --val_dir "/share/seo/imagenet/val/" \
+    --layer_trainer ${layer_train} \

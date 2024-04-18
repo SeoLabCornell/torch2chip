@@ -54,6 +54,7 @@ class _QBase(nn.Module):
     trainFunc (input:Tensor): Training function of quantization-aware training (QAT)
     evalFunc (input:Tensor): Forward pass function of inference. 
     inference(): Switch to inference mode. 
+    register_qparm(): Register the quantization parameters (scale and zero point) as buffer parameters
     """
     def __init__(self, nbit:int, train_flag:bool=True, unsigned:bool=True):
         super(_QBase, self).__init__()
@@ -117,7 +118,7 @@ class _QBase(nn.Module):
     def extra_repr(self) -> str:
         return super().extra_repr() + "nbit={}".format(self.nbit)
 
-    
+
 class _QBaseConv2d(nn.Conv2d):
     r"""
     Basic low precision convolutional layer

@@ -186,10 +186,6 @@ class QWindowAttention(nn.Module):
         self.attn_scale = MulShift()
         self.attn_scale.scale.data.copy_(self.scale)
 
-        # matmul operator
-        self.qk = IntMatMul(nbit=32)
-        self.attnv = IntMatMul(nbit=32)
-
     def inference(self):
         self.train_flag = False
         
@@ -199,6 +195,10 @@ class QWindowAttention(nn.Module):
         self.qkv.inference()
         self.qproj.inference()
         self.proj.inference()
+
+        # matmul operator
+        self.qk = IntMatMul(nbit=32)
+        self.attnv = IntMatMul(nbit=32)
 
     def _get_rel_pos_bias(self) -> torch.Tensor:
         relative_position_bias = self.relative_position_bias_table[

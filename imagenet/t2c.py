@@ -161,7 +161,7 @@ def main():
     if args.wbit < 32 or args.wbit < 32:
         converter = wrapper(model, wbit=args.wbit, abit=args.abit, state_dict=state_tmp)
         model = converter.reload(wqtype=args.wqtype, xqtype=args.xqtype)
-    
+
     # resume from the checkpoint
     model.load_state_dict(state_tmp)
     logger.info(f"Loaded checkpoint from: {args.resume}")

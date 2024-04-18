@@ -4,16 +4,10 @@ Learned Step Size Quantization
 
 import torch
 from src.module.base import _QBase, round_ste
-from src.quantization.observer import BaseObserver, BaseTokenWiseObserver
+from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, lp_loss
 
-def lp_loss(pred, target, p=2.0, reduction='none'):
-    """
-    loss function measured in lp norm
-    """
-    if reduction == 'none':
-        return (pred-target).abs().pow(p).sum(1).mean()
-    else:
-        return (pred-target).abs().pow(p).mean()
+def grad_scale(t, scale):
+    return (t - (t * scale)).detach() + (t * scale)
 
 class LSQObserver(BaseObserver):
     def __init__(self, nbit: int, unsigned: bool = True):
@@ -115,19 +109,21 @@ class LSQ(_QBase):
         if not self.initialize:
             if self.train_flag:
                 with torch.no_grad():
-                    print("initialize q params")
-                    delta, zero_point = self.observer(x)
+                    delta, zero_point = self.observer(x.detach())
                     self.delta.data = delta
                     self.zero_point.data = zero_point
                     self.initialize = True
 
         # quantize
+        grad_factor = 1.0 / (x.numel() * self.observer.qub) ** 0.5
+        self.delta.data = grad_scale(self.delta, grad_factor)
+        
         xr = round_ste(x / self.delta) + self.zero_point
-        xq = torch.clamp(xr, min=self.qlb, max=self.qub)
+        xr = torch.clamp(xr, min=self.qlb, max=self.qub)
 
         # dequantize
-        xdq = xq.sub(self.zero_point).clamp(self.qlb, self.qub)
-        return xdq.mul(self.delta)
+        xr = xr.sub(self.zero_point).mul(self.delta)
+        return xr
     
     def trainFunc(self, input: torch.Tensor):
         xdq = self.q(input)

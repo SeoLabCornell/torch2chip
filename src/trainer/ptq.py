@@ -17,6 +17,7 @@ from src.module.attention import QAttention, QWindowAttention, QBertSelfAttentio
 
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
+from src.quantization.qdrop import QDrop
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 
 from timm.layers.mlp import Mlp
@@ -35,6 +36,7 @@ input_quantizer = {
     "minmax_channel": MinMaxChannelWiseActQuantizer,
     "lsq": LSQ,
     "lsq_token": LSQTokenWise,
+    "qdrop": QDrop,
     "identity": _QBase
 }
 
@@ -153,25 +155,31 @@ class PTQ(object):
             {'params':layer.wq.parameters(), 'lr': self.args.lr, 'weight_decay': 0.0}, 
         ]
 
-        layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True).cuda()
-        
+        if isinstance(layer, _QBaseConv2d):
+            if layer.in_channels != 3:
+                layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True).cuda()
+        else:
+            layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True).cuda()
         
         qparams += [
             {'params':layer.aq.parameters(), 'lr': self.args.lr, 'weight_decay': 0.0}, 
         ]
 
         if self.args.optimizer == "adam":
-            optimizer = torch.optim.Adam(qparams, weight_decay=self.args.weight_decay)
+            optimizer = torch.optim.Adam(qparams)
         elif self.args.optimizer == "sgd":
-            optimizer = torch.optim.SGD(qparams, weight_decay=self.args.weight_decay)
+            optimizer = torch.optim.SGD(qparams)
+        
+        sz = len(cached_data)
+        id = torch.randint(0, sz, (self.args.batch_size,))
         
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(self.epochs * len(cached_data)), eta_min=0.)
-        pbar = tqdm(range(self.epochs), desc="Epoch")
+        pbar = tqdm(range(self.epochs), desc=f"Epoch | {self.args.optimizer}")
         for i in pbar:
             calib_loss = AverageMeter()
-            for idx, batch in enumerate(cached_data):
+            for idx, batch in enumerate(cached_data):      
                 # fetch the data
-                x, y = batch
+                x, y = cached_data[id[idx]]
 
                 # cuda
                 x = x.cuda()
@@ -182,10 +190,13 @@ class PTQ(object):
                 err = self.criterion(out, y)
                 calib_loss.update(err.item())
 
-                optimizer.zero_grad()
-                err.backward(retain_graph=True)
-                optimizer.step()
-                scheduler.step()
+                try:
+                    optimizer.zero_grad()
+                    err.backward(retain_graph=True)
+                    optimizer.step()
+                    scheduler.step()
+                except:
+                    continue
 
             pbar.set_postfix(lr=scheduler.get_last_lr()[0], loss=err.item())
 
@@ -324,8 +335,8 @@ class PTQViT(PTQ):
 
         return layer
 
-    def layer_trainer(self, layer:Union[QAttention, Mlp], cached_data):
-        if isinstance(layer, QAttention):
+    def layer_trainer(self, layer:Union[QAttention, QWindowAttention, Mlp], cached_data):
+        if isinstance(layer, (QAttention, QWindowAttention)):
             qlayer = self.update_attn(layer)
         elif isinstance(layer, Mlp):
             qlayer = self.update_mlp(layer)
