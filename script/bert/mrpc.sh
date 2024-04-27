@@ -12,7 +12,7 @@ weight_decay=1e-4
 dataset="mrpc"
 log_file="training.log"
 
-wbit=6
+wbit=8
 abit=8
 xqtype="minmax_token"
 wqtype="minmax_channel"

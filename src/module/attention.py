@@ -508,7 +508,7 @@ class QBertSelfAttention(nn.Module):
             attention_probs = attention_probs * head_mask
 
         # round the attention score to 8-bit (fixed)
-        attention_probs = attention_probs.mul(256.).round()
+        attention_probs = attention_probs.mul(255.).round()
 
         context_layer = self.attnv(attention_probs, value_layer)
         context_layer = self.qkv_deq(context_layer)

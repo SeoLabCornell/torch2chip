@@ -4,7 +4,7 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=resnet34
+model=mobilenetv1
 epochs=1
 batch_size=64
 lr=1e-3
@@ -15,8 +15,8 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="lsq"
-wqtype="adaround"
+xqtype="qdrop"
+wqtype="minmax_channel"
 num_samples=1024
 ttype=ptq
 layer_train=True

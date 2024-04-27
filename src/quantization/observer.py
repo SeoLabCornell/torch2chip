@@ -63,7 +63,7 @@ class BaseObserver(nn.Module):
     def forward(self, x:torch.Tensor):
         self.get_bound(x)
         scale, zero_point = self.calculate_qparam(x)
-        return scale, zero_point        
+        return scale, zero_point
 
 
 class BaseChannelWiseObserver(BaseObserver):

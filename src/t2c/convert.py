@@ -10,8 +10,10 @@ from src.module.base import _QBaseLinear, _QBaseConv2d, _QBase
 from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
+from src.quantization.qdrop import QDrop, QDropTokenWise
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 from src.quantization.observer import BaseObserver, BaseChannelWiseObserver, BaseTokenWiseObserver
+from src.quantization.smoothquant import SmoothQuantizer, SmoothQuantChannelWiseWeightQuantizer, SmoothQuantTokenWiseQuantizer
 
 from timm.models.vision_transformer import Attention
 from timm.models.swin_transformer import WindowAttention
@@ -24,6 +26,8 @@ weight_quantizer = {
     "adaround": AdaRound,
     "minmax": MinMaxQuantizer,
     "minmax_channel": MinMaxChannelWiseWeightQuantizer,
+    "smooth": SmoothQuantizer,
+    "smooth_channel": SmoothQuantChannelWiseWeightQuantizer,
     "identity": _QBase
 }
 
@@ -31,8 +35,12 @@ input_quantizer = {
     "minmax": MinMaxQuantizer,
     "minmax_token": MinMaxTokenWiseQuantizer,
     "minmax_channel": MinMaxChannelWiseActQuantizer,
+    "smooth": SmoothQuantizer,
+    "smooth_token": SmoothQuantTokenWiseQuantizer,
     "lsq": LSQ,
     "lsq_token": LSQTokenWise,
+    "qdrop": QDrop,
+    "qdrop_token": QDropTokenWise,
     "identity": _QBase
 }
 def get_parent_name(target:str) -> Tuple[str, str]:
@@ -240,6 +248,10 @@ class ViTV4C(Vanilla4Compress):
         
         elif isinstance(layer, _QBase):
             layer.scale.data = torch.ones_like(self.state_dict[layer_name+".scale"])
+            
+            if hasattr(layer, "delta"):
+                layer.delta.data = torch.ones_like(self.state_dict[layer_name+".delta"])
+
             layer.zero_point.data = torch.zeros_like(self.state_dict[layer_name+".zero_point"])
             layer.observer.lb.data = torch.zeros_like(self.state_dict[layer_name+".observer.lb"])
             layer.observer.ub.data = torch.zeros_like(self.state_dict[layer_name+".observer.ub"])
@@ -349,6 +361,10 @@ class BERT4Compress(Vanilla4Compress):
         elif isinstance(layer, _QBase):
             layer.scale.data = torch.ones_like(self.state_dict[layer_name+".scale"])
             layer.zero_point.data = torch.zeros_like(self.state_dict[layer_name+".zero_point"])
+
+            if hasattr(layer, "delta"):
+                layer.delta.data = torch.ones_like(self.state_dict[layer_name+".delta"])
+            
             layer.observer.lb.data = torch.zeros_like(self.state_dict[layer_name+".observer.lb"])
             layer.observer.ub.data = torch.zeros_like(self.state_dict[layer_name+".observer.ub"])
         

@@ -144,7 +144,7 @@ def main():
     # evaluate the pre-trained model
     test(model, validloader, logger, device)
 
-    t2c.bert_export(validloader, path=args.save_path, export_samples=args.export_samples)
+    # t2c.bert_export(validloader, path=args.save_path, export_samples=args.export_samples)
 
 
 if __name__ == "__main__":

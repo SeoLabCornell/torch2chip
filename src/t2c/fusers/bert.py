@@ -67,7 +67,8 @@ class BERTFuser(ViTFuser):
         module.attn_scale.scale.data = 1 / (qkscale) * module.attn_scale.scale
 
         # scale back after attention @ v
-        ssfmx = 1 / 256
+        ssfmx = 1 / 255
+        # module.qkv_deq.scale = 1 / sv * ssfmx
         module.qkv_deq.scale = 1 / sv * ssfmx
         
         # # update the module

@@ -94,6 +94,10 @@ class ViTFuser(object):
 
         # output quantizer
         sproj = module.qproj.scale.mul(sv).mul(ssfmx)
+
+        if hasattr(module.qproj, "smoother"):
+            sproj = sproj.mul(module.qproj.smoother.scale)
+
         qproj = MulQuant(nbit=module.qproj.nbit)
         qproj.scale.data = sproj
         qproj.zp.data = module.qproj.zero_point

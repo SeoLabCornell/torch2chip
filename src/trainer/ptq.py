@@ -17,7 +17,8 @@ from src.module.attention import QAttention, QWindowAttention, QBertSelfAttentio
 
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
-from src.quantization.qdrop import QDrop
+from src.quantization.qdrop import QDrop, QDropTokenWise
+from src.quantization.smoothquant import SmoothQuantChannelWiseWeightQuantizer, SmoothQuantTokenWiseQuantizer, SmoothQuantizer
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 
 from timm.layers.mlp import Mlp
@@ -27,6 +28,8 @@ weight_quantizer = {
     "adaround": AdaRound,
     "minmax": MinMaxQuantizer,
     "minmax_channel": MinMaxChannelWiseWeightQuantizer,
+    "smooth": SmoothQuantizer,
+    "smooth_channel": SmoothQuantChannelWiseWeightQuantizer,
     "identity": _QBase
 }
 
@@ -34,9 +37,12 @@ input_quantizer = {
     "minmax": MinMaxQuantizer,
     "minmax_token": MinMaxTokenWiseQuantizer,
     "minmax_channel": MinMaxChannelWiseActQuantizer,
+    "smooth": SmoothQuantizer,
+    "smooth_token": SmoothQuantTokenWiseQuantizer,
     "lsq": LSQ,
     "lsq_token": LSQTokenWise,
     "qdrop": QDrop,
+    "qdrop_token": QDropTokenWise,
     "identity": _QBase
 }
 
@@ -291,7 +297,7 @@ class PTQViT(PTQ):
     def __init__(self, model: Module, loss_type: str, trainloader, validloader, args, logger):
         super().__init__(model, loss_type, trainloader, validloader, args, logger)
     
-    def update_attn(self, layer:Union[QAttention, QWindowAttention]):
+    def update_attn(self, layer:Union[QAttention, QWindowAttention], name=None):
         # low precision qkv
         qkvw = layer.qkv.weight
         projw = layer.proj.weight
@@ -314,7 +320,7 @@ class PTQViT(PTQ):
         
         return layer
 
-    def update_mlp(self, layer:Mlp):
+    def update_mlp(self, layer:Mlp, name=None):
         w1 = layer.fc1.weight
         w2 = layer.fc2.weight
 
@@ -335,11 +341,11 @@ class PTQViT(PTQ):
 
         return layer
 
-    def layer_trainer(self, layer:Union[QAttention, QWindowAttention, Mlp], cached_data):
+    def layer_trainer(self, layer:Union[QAttention, QWindowAttention, Mlp], name:str, cached_data):
         if isinstance(layer, (QAttention, QWindowAttention)):
-            qlayer = self.update_attn(layer)
+            qlayer = self.update_attn(layer, name)
         elif isinstance(layer, Mlp):
-            qlayer = self.update_mlp(layer)
+            qlayer = self.update_mlp(layer, name)
         
         if self.args.optimizer == "adam":
             optimizer = torch.optim.Adam(qlayer.parameters(), weight_decay=self.args.weight_decay)
@@ -374,11 +380,11 @@ class PTQViT(PTQ):
 
         return qlayer, calib_loss.avg
     
-    def layer_calibrator(self, layer:Union[QAttention, QWindowAttention, Mlp], cached_data):
+    def layer_calibrator(self, layer:Union[QAttention, QWindowAttention, Mlp], name:str, cached_data):
         if isinstance(layer, (QAttention, QWindowAttention)):
-            qlayer = self.update_attn(layer)
+            qlayer = self.update_attn(layer, name)
         elif isinstance(layer, Mlp):
-            qlayer = self.update_mlp(layer)
+            qlayer = self.update_mlp(layer, name)
         
         calib_loss = AverageMeter()
         loss_fn = nn.MSELoss()
@@ -407,9 +413,9 @@ class PTQViT(PTQ):
                 self.logger.info(f"Start Calibration of layer: {n}")
                 
                 if self.layer_train:
-                    new_layer, calib_err = self.layer_trainer(m, cached_data)
+                    new_layer, calib_err = self.layer_trainer(m, n, cached_data)
                 else:
-                    new_layer, calib_err = self.layer_calibrator(m, cached_data)
+                    new_layer, calib_err = self.layer_calibrator(m, n, cached_data)
 
                 self.logger.info(f"Layer {n}: Loss = {calib_err}")
 
@@ -445,7 +451,7 @@ class PTQBERT(PTQ):
         
         return cached_data  
 
-    def update_attn(self, layer:QBertSelfAttention):
+    def update_attn(self, layer:QBertSelfAttention, name=None):
         qw = layer.query.weight
         kw = layer.key.weight
         vw = layer.value.weight
@@ -477,7 +483,7 @@ class PTQBERT(PTQ):
         setattr(layer, "qvalue", qvalue)
         return layer
 
-    def update_output(self, layer:BertSelfOutput):
+    def update_output(self, layer:BertSelfOutput, name=None):
         dense = getattr(layer, "dense")
         weight = dense.weight
         

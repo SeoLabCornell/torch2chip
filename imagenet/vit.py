@@ -13,6 +13,7 @@ from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
 from src.trainer.pruning import STrainer
 from src.trainer.ptq import PTQ, PTQViT
+from src.trainer.smoothquant import SmoothQuantPTQViT
 from src.t2c.convert import ViTV4C
 
 from timm.models.vision_transformer import vit_tiny_patch16_224, vit_base_patch16_224, vit_small_patch16_224
@@ -22,7 +23,8 @@ TRAINERS = {
     "base": Trainer,
     "sparse": STrainer,
     "ptq": PTQ,
-    "qattn": PTQViT
+    "qattn": PTQViT,
+    "smooth_quant": SmoothQuantPTQViT
 }
 
 parser = argparse.ArgumentParser(description='T2C Training')
@@ -70,6 +72,9 @@ parser.add_argument('--wqtype', type=str, default="adaround", help='Weight quant
 parser.add_argument('--xqtype', type=str, default="lsq", help='Input quantizer')
 parser.add_argument('--num_samples', type=int, default=1024, help="Number of samples for calibration")
 parser.add_argument("--layer_trainer", type=str2bool, nargs='?', const=True, default=False, help="enable layer-wise training / calibration")
+
+# smoothquant
+parser.add_argument('--alpha', default=0.5, type=float, help='smooth factor')
 
 args = parser.parse_args()
 

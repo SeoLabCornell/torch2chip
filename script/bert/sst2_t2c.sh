@@ -14,12 +14,12 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="minmax_token"
+xqtype="lsq"
 wqtype="minmax_channel"
 num_samples=512
 
-pre_trained="/home/jm2787/MLSys24/torch2chip/save/sst2/BERT-BASE/minmax_token_minmax_channel/BERT-BASE_w8_a8_lr1e-4_batch32_mseloss_all/model_best.pth.tar"
-save_path="/home/jm2787/MLSys24/torch2chip/save/sst2/BERT-BASE/minmax_token_minmax_channel/BERT-BASE_w8_a8_lr1e-4_batch32_mseloss_all/t2c/"
+pre_trained="./save/sst2/BERT-BASE/lsq_minmax_channel/BERT-BASE_w8_a8_lr1e-4_batch32_mseloss_all/model_best.pth.tar"
+save_path="./save/sst2/BERT-BASE/lsq_minmax_channel/BERT-BASE_w8_a8_lr1e-4_batch32_mseloss_all/t2c/"
 
 python3 -W ignore ./bert/sst2_t2c.py \
     --model "bert" \

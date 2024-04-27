@@ -4,7 +4,7 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=swin_base_patch4_window7_224
+model=vit_tiny
 epochs=1
 batch_size=100
 lr=1e-4
@@ -15,10 +15,10 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="lsq"
-wqtype="minmax_channel"
+xqtype="smooth"
+wqtype="smooth_channel"
 num_samples=500
-ttype=qattn
+ttype=smooth_quant
 layer_train=True
 
 save_path="./save/${dataset}/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_all/"

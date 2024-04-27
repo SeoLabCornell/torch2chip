@@ -157,6 +157,32 @@ class LSQTokenWise(LSQ):
         self.register_qparams()
     
     def register_qparams(self):
-        super().register_qparams()
-        # register learnable parameter 
-        self.register_parameter("delta", torch.nn.Parameter(torch.tensor(1.0)))
+        self.register_parameter("delta", torch.nn.Parameter(torch.ones(1, self.num_tokens, 1)))
+        self.register_buffer("scale", torch.ones(1, self.num_tokens, 1))
+        self.register_buffer("zero_point", torch.zeros(1, self.num_tokens, 1))
+
+    def sync_tokens(self):
+        if self.num_tokens != self.observer.num_tokens:
+            self.observer.num_tokens = self.num_tokens
+
+    def update_qparam(self, input:torch.Tensor):
+        if len(input.shape) == 4:
+            if input.shape[2] != self.num_tokens:
+                self.num_tokens = input.shape[2]
+                self.register_qparams()
+                self.observer.register_range()
+
+        elif len(input.shape) == 3:
+            if input.shape[1] != self.num_tokens:
+                self.num_tokens = input.shape[1]
+                self.register_qparams()
+                self.observer.register_range()
+
+        self.sync_tokens()
+
+    def trainFunc(self, input: torch.Tensor):
+        self.update_qparam(input)
+        return super().trainFunc(input)
+
+    def extra_repr(self) -> str:
+        return f"nbit={self.nbit}, delta_mean={self.delta.data.mean().item():.2e}"
