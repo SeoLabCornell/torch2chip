@@ -22,6 +22,9 @@ class MulShift(nn.Module):
         # fractional bit width
         self.fl = 0.
 
+    def inference(self):
+        pass
+
     def forward(self, x:torch.Tensor):
         out = x.mul(self.scale).add(self.bias)
         out = out.mul(2**(-self.fl))
@@ -39,7 +42,7 @@ class MulQuant(nn.Module):
         super(MulQuant, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
         self.register_buffer("bias", torch.tensor(0.0))
-        self.register_buffer("zp", torch.tensor(0.0))
+        self.register_buffer("zero_point", torch.tensor(0.0))
 
         self.nbit = nbit
         self.unsigned = unsigned
@@ -55,14 +58,17 @@ class MulQuant(nn.Module):
         # fractional bit width
         self.fl = 0.
 
+    def inference(self):
+        pass
+
     def forward(self, x:torch.Tensor):
         # scale
         out = x.mul(self.scale)
         out = out.add(self.bias).mul(2**(-self.fl)).round()
         
         # quant
-        out = out.add(self.zp)
-        out = out.clamp(min=self.qlb, max=self.qub).sub(self.zp)
+        out = out.add(self.zero_point)
+        out = out.clamp(min=self.qlb, max=self.qub).sub(self.zero_point)
         
         return out.clamp(min=self.qlb, max=self.qub)
 

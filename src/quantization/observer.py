@@ -29,7 +29,6 @@ class BaseObserver(nn.Module):
         self.register_buffer("lb", torch.tensor(float("-inf")))
         self.register_buffer("ub", torch.tensor(float("inf")))
 
-    @torch.no_grad
     def get_bound(self, x:torch.Tensor):
         min_val = x.min()
         max_val = x.max()
@@ -48,7 +47,7 @@ class BaseObserver(nn.Module):
             self.lb.copy_(lb)
             self.ub.copy_(ub)
 
-    def calculate_qparam(self, x):
+    def calculate_qparam(self, x:torch.Tensor):
 
         if self.unsigned:
             scale = (self.ub - self.lb) / (self.qub - self.qlb)
@@ -82,8 +81,7 @@ class BaseChannelWiseObserver(BaseObserver):
     def reshape(self, x):
         xr = x.reshape(-1, x.shape[-1])
         return xr
-    
-    @torch.no_grad
+
     def get_bound(self, x:torch.Tensor):
         xr = self.reshape(x)
         
@@ -116,8 +114,7 @@ class BaseTokenWiseObserver(BaseObserver):
         # register buffer for the floating point range
         self.register_buffer("lb", torch.ones(1, self.num_tokens, 1).mul(float("-inf")))
         self.register_buffer("ub", torch.ones(1, self.num_tokens, 1).mul(float("inf")))
-    
-    @torch.no_grad
+
     def get_bound(self, x:torch.Tensor):
         # x = x.view(self.num_tokens, -1)
         x = x.reshape(self.num_tokens, -1)

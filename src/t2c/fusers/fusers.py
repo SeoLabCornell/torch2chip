@@ -126,7 +126,7 @@ class LayerFuser(object):
         tmp.scaler.scale.data = sq.mul(snxt)
 
         if isinstance(tmp.scaler, MulQuant):
-            tmp.scaler.zp.data = zpnxt
+            tmp.scaler.zero_point.data = zpnxt
         
         # replace the activation quantizer by the Identity module
         if l > self.fpl-1:

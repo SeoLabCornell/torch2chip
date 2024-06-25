@@ -10,7 +10,6 @@ class MinMaxObserver(BaseObserver):
     def __init__(self, nbit: int, unsigned: bool = True):
         super().__init__(nbit, unsigned)
 
-    @torch.no_grad
     def get_bound(self, x: torch.Tensor):
         return super().get_bound(x)
 
@@ -18,7 +17,6 @@ class MinMaxTokenWiseObserver(BaseTokenWiseObserver):
     def __init__(self, nbit: int, unsigned: bool = True, num_tokens: int = 197):
         super().__init__(nbit, unsigned, num_tokens)
 
-    @torch.no_grad
     def get_bound(self, x: torch.Tensor):
         return super().get_bound(x)
     
@@ -37,14 +35,13 @@ class MinMaxChannelWiseWeightObserver(BaseChannelWiseObserver):
     
     def calculate_qparam(self, x):
         scale, zero_point = super().calculate_qparam(x)
-        
+
         if len(x.shape) == 4:
             scale = scale.unsqueeze(2).unsqueeze(3)
             zero_point = zero_point.unsqueeze(2).unsqueeze(3)
         
         return scale, zero_point
-    
-    @torch.no_grad
+
     def get_bound(self, x: torch.Tensor):
         return super().get_bound(x)
     
@@ -74,14 +71,16 @@ class MinMaxChannelWiseActObserver(BaseChannelWiseObserver):
 class MinMaxQuantizer(_QBase):
     def __init__(self, nbit: int, train_flag: bool = True, unsigned: bool = True):
         super().__init__(nbit, train_flag, unsigned)
-
+        
+        # observer
         self.observer = MinMaxObserver(nbit=self.nbit, unsigned=self.unsigned)
 
     def q(self, x:torch.Tensor):
-        delta, zero_point = self.observer(x)
+        if self.train_flag:
+            delta, zero_point = self.observer(x)
 
-        self.scale.data = 1 / delta
-        self.zero_point.data = zero_point
+            self.scale.data = 1 / delta
+            self.zero_point.data = zero_point
         
         xr = round_ste(x * self.scale) + self.zero_point
         xq = torch.clamp(xr, min=self.qlb, max=self.qub)
@@ -107,7 +106,9 @@ class MinMaxTokenWiseQuantizer(MinMaxQuantizer):
         super().__init__(nbit, train_flag, unsigned)
 
         # observer
-        self.observer = MinMaxTokenWiseObserver(nbit=self.nbit, unsigned=self.unsigned, num_tokens=num_tokens)        
+        self.observer = MinMaxTokenWiseObserver(nbit=self.nbit, unsigned=self.unsigned, num_tokens=num_tokens)
+
+        # qparams
         self.register_qparams()
     
     def register_qparams(self):

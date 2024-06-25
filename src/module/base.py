@@ -11,16 +11,9 @@ class IntMatMul(nn.Module):
     def __init__(self, nbit:int):
         super().__init__()
         self.nbit = nbit
-        self.register_buffer("x_shape", torch.tensor([1,1]))
-        self.register_buffer("y_shape", torch.tensor([1,1]))
-        self.register_buffer("z_shape", torch.tensor([1,1]))
 
     def forward(self, x, y):
         z = torch.matmul(x, y)
-        
-        self.x_shape.data = torch.tensor(list(x.size()))
-        self.y_shape.data = torch.tensor(list(y.size()))
-        self.z_shape.data = torch.tensor(list(z.size()))
         return z
     
 class ConvOPS(nn.Module):
@@ -31,16 +24,8 @@ class ConvOPS(nn.Module):
         self.dilation = dilation
         self.groups = groups
 
-        self.register_buffer("x_shape", torch.tensor([1,1]))
-        self.register_buffer("y_shape", torch.tensor([1,1]))
-        self.register_buffer("z_shape", torch.tensor([1,1]))
-
     def forward(self, x:torch.Tensor, y:torch.Tensor, b:torch.Tensor):
         z = F.conv2d(x, y, b, self.stride, self.padding, self.dilation, self.groups)
-        
-        self.x_shape.data = torch.tensor(list(x.size()))
-        self.y_shape.data = torch.tensor(list(y.size()))
-        self.z_shape.data = torch.tensor(list(z.size()))
         return z
 
 class _QBase(nn.Module):
@@ -242,7 +227,7 @@ class _QBaseLinear(nn.Linear):
             wq = self.wq(self.weight)
             self.qweight.copy_(wq.data.mul(self.mask))
             self.initialize_qweight = False
-
+        
         xq = self.aq(x)
         y = self.ops(xq, self.qweight.transpose(0,1))
 
@@ -253,7 +238,6 @@ class _QBaseLinear(nn.Linear):
             y = self.trainFunc(x)
         else:
             y = self.evalFunc(x)
-        
         y = self.yq(y)
         return y
     

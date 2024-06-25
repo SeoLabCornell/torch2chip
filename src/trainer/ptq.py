@@ -20,6 +20,7 @@ from src.quantization.lsq import LSQ, LSQTokenWise
 from src.quantization.qdrop import QDrop, QDropTokenWise
 from src.quantization.smoothquant import SmoothQuantChannelWiseWeightQuantizer, SmoothQuantTokenWiseQuantizer, SmoothQuantizer
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
+from src.quantization.mxint import MXChannelWiseWeightQuantizer
 
 from timm.layers.mlp import Mlp
 from transformers.models.bert.modeling_bert import BertSelfOutput
@@ -30,6 +31,7 @@ weight_quantizer = {
     "minmax_channel": MinMaxChannelWiseWeightQuantizer,
     "smooth": SmoothQuantizer,
     "smooth_channel": SmoothQuantChannelWiseWeightQuantizer,
+    "mx_channel": MXChannelWiseWeightQuantizer,
     "identity": _QBase
 }
 

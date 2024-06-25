@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from typing import Tuple
 from src.module.base import _QBaseLinear, _QBaseConv2d, _QBase
+from src.module.fuse import MulQuant, MulShift
 from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
@@ -175,6 +176,11 @@ class Vanilla4Compress(object):
                 parent_name, name = get_parent_name(n)
                 setattr(modules[parent_name], name, m)
 
+            elif isinstance(m, (MulQuant, MulShift)):
+                parent_name, name = get_parent_name(n)
+                m = self.reshape_quantizer(m, n)
+                setattr(modules[parent_name], name, m)
+
         return model
     
     def convert(self):
@@ -229,10 +235,17 @@ class Vanilla4Compress(object):
             if isinstance(layer.aq.observer, BaseChannelWiseObserver):
                 layer.aq.scale.unsqueeze_(2).unsqueeze_(3)
                 layer.aq.zero_point.unsqueeze_(2).unsqueeze_(3)
+
+        elif isinstance(layer, (MulQuant, MulShift)):
+            layer.scale.data = torch.ones_like(self.state_dict[layer_name+".scale"])
+            layer.bias.data = torch.ones_like(self.state_dict[layer_name+".bias"])
+
+            if isinstance(layer, MulQuant):
+                layer.zero_point.data = torch.ones_like(self.state_dict[layer_name+".zero_point"])
         
         return layer
 
-    def reload(self, wqtype, xqtype):
+    def reload_fake_quant(self, wqtype, xqtype):
         qmodel = self.convert()
         qmodel = self.assign_quantizer(qmodel, wqtype=wqtype, xqtype=xqtype)
         return qmodel
@@ -248,17 +261,33 @@ class ViTV4C(Vanilla4Compress):
         
         elif isinstance(layer, _QBase):
             layer.scale.data = torch.ones_like(self.state_dict[layer_name+".scale"])
+            layer.zero_point.data = torch.zeros_like(self.state_dict[layer_name+".zero_point"])
             
-            if hasattr(layer, "delta"):
+            observer_lb_key = layer_name+".observer.lb"
+            observer_ub_key = layer_name+".observer.ub"
+            additional_learnable_param = layer_name+".delta"
+
+            if observer_lb_key in self.state_dict.keys():
+                layer.observer.lb.data = torch.zeros_like(self.state_dict[observer_lb_key])
+            
+            if observer_ub_key in self.state_dict.keys():
+                layer.observer.ub.data = torch.zeros_like(self.state_dict[observer_ub_key])
+
+            if hasattr(layer, "delta") and additional_learnable_param in self.state_dict.keys():
                 layer.delta.data = torch.ones_like(self.state_dict[layer_name+".delta"])
 
-            layer.zero_point.data = torch.zeros_like(self.state_dict[layer_name+".zero_point"])
-            layer.observer.lb.data = torch.zeros_like(self.state_dict[layer_name+".observer.lb"])
-            layer.observer.ub.data = torch.zeros_like(self.state_dict[layer_name+".observer.ub"])
+        
+        elif isinstance(layer, (MulQuant, MulShift)):
+            layer.scale.data = torch.ones_like(self.state_dict[layer_name+".scale"])
+            layer.bias.data = torch.ones_like(self.state_dict[layer_name+".bias"])
+
+            if isinstance(layer, MulQuant):
+                layer.zero_point.data = torch.ones_like(self.state_dict[layer_name+".zero_point"])
+            
 
         return layer
 
-    def assign_quantizer(self, model, wqtype, xqtype):
+    def assign_quantizer(self, model, wqtype, xqtype, inference=False):
         model = copy.deepcopy(model)
         modules = dict(model.named_modules(remove_duplicate=True))
 
@@ -294,33 +323,36 @@ class ViTV4C(Vanilla4Compress):
                 setattr(m, "proj", proj)
                 setattr(modules[parent_name], name, m)
 
+                if inference:
+                    m.inference()
+
             elif isinstance(m, Mlp):
+                mlp = dict(m.named_modules(remove_duplicate=True))
+                for subname, sub in m.named_modules():
+                    if isinstance(sub, _QBaseLinear):
+                        sub_parent, sub_name = get_parent_name(subname)
+
+                        # add quantizers
+                        w = sub.weight
+                        if wqtype == "adaround":
+                            sub.wq = weight_quantizer[wqtype](nbit=self.wbit, weights=w, train_flag=False).cuda()
+                        else:
+                            sub.wq = weight_quantizer[wqtype](nbit=self.wbit, train_flag=False).cuda()
+                        
+                        aq = input_quantizer[xqtype](nbit=self.abit, train_flag=False, unsigned=False)
+
+                        sub = self.reshape_quantizer(sub, n+"."+subname)
+                        aq = self.reshape_quantizer(aq, n+"."+subname+".aq")
+                        
+                        setattr(sub, "aq", aq)
+                        setattr(mlp[sub_parent], sub_name, sub)
+
+                        if inference:
+                            m.inference()
+
+            elif isinstance(m, (MulQuant, MulShift)):
                 parent_name, name = get_parent_name(n)
-
-                w1 = m.fc1.weight
-                w2 = m.fc2.weight
-
-                # add quantizers
-                if wqtype == "adaround":
-                    m.fc1.wq = weight_quantizer[wqtype](nbit=self.wbit, weights=w1, train_flag=False).cuda()
-                    m.fc2.wq = weight_quantizer[wqtype](nbit=self.wbit, weights=w2, train_flag=False).cuda()
-                else:
-                    m.fc1.wq = weight_quantizer[wqtype](nbit=self.wbit, train_flag=False).cuda()
-                    m.fc2.wq = weight_quantizer[wqtype](nbit=self.wbit, train_flag=False).cuda()
-
-                # update quantizer
-                aq1 = input_quantizer[xqtype](nbit=self.abit, train_flag=False, unsigned=False)
-                aq2 = input_quantizer[xqtype](nbit=self.abit, train_flag=False, unsigned=False)
-
-                # reshape the q params
-                fc1 = self.reshape_quantizer(m.fc1, n+".fc1")
-                fc2 = self.reshape_quantizer(m.fc2, n+".fc2")
-
-                m.fc1.aq = self.reshape_quantizer(aq1, n+".fc1.aq")
-                m.fc2.aq = self.reshape_quantizer(aq2, n+".fc2.aq")
-
-                setattr(m, "fc1", fc1)
-                setattr(m, "fc2", fc2)
+                m = self.reshape_quantizer(m, n)
                 setattr(modules[parent_name], name, m)
 
         return model
@@ -345,6 +377,7 @@ class ViTV4C(Vanilla4Compress):
                 setattr(modules[parent_name], name, new_layer)
 
         return model
+
 
 class BERT4Compress(Vanilla4Compress):
     def __init__(self, model: nn.Module, wbit: int = 8, abit: int = 8, state_dict: Dict = None) -> None:

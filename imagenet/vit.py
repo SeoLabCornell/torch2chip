@@ -123,8 +123,8 @@ def main():
         logger=logger
     )
 
-    trainer.valid_epoch()
-    logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    # trainer.valid_epoch()
+    # logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
 
     # start ptq
     trainer.fit()

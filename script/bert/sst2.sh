@@ -14,8 +14,8 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="lsq"
-wqtype="minmax_channel"
+xqtype="smooth_token"
+wqtype="smooth_channel"
 num_samples=512
 
 

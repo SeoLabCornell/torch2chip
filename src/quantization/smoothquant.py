@@ -26,11 +26,12 @@ class SmoothQuantizer(_QBase):
         # smooth out the distribution
         x = self.smoother(x)
         
-        # go through the observer
-        delta, zero_point = self.observer(x)
+        if self.train_flag:
+            # go through the observer
+            delta, zero_point = self.observer(x)
 
-        self.scale.data = 1 / delta
-        self.zero_point.data = zero_point
+            self.scale.data = 1 / delta
+            self.zero_point.data = zero_point
         
         xr = round_ste(x * self.scale) + self.zero_point
         xq = torch.clamp(xr, min=self.qlb, max=self.qub)
@@ -80,6 +81,30 @@ class SmoothQuantTokenWiseQuantizer(SmoothQuantizer):
         self.observer = MinMaxTokenWiseObserver(nbit=self.nbit, unsigned=unsigned)
         self.register_qparams()
 
+    def sync_tokens(self):
+        if self.num_tokens != self.observer.num_tokens:
+            self.observer.num_tokens = self.num_tokens
+    
+    def update_qparam(self, input:torch.Tensor):
+        if len(input.shape) == 4:
+            if input.shape[2] != self.num_tokens:
+                self.num_tokens = input.shape[2]
+                self.register_qparams()
+                self.observer.register_range()
+
+        elif len(input.shape) == 3:
+            if input.shape[1] != self.num_tokens:
+                self.num_tokens = input.shape[1]
+                self.register_qparams()
+                self.observer.register_range()
+        
+        self.sync_tokens()
+
     def register_qparams(self):
         self.register_buffer("scale", torch.ones(1, self.num_tokens, 1))
         self.register_buffer("zero_point", torch.zeros(1, self.num_tokens, 1))
+
+    def trainFunc(self, input: torch.Tensor):
+        self.update_qparam(input)
+        
+        return super().trainFunc(input)

@@ -76,7 +76,7 @@ class ViTFuser(object):
         # update scaling and bias
         q.scale.data = sqkv
         q.bias.data = qbias
-        q.zp.data = module.qqkv.zero_point
+        q.zero_point.data = module.qqkv.zero_point
 
         attn_scale = module.attn_scale.scale
         scale = module.qqkv.scale.unsqueeze(0)
@@ -100,7 +100,7 @@ class ViTFuser(object):
 
         qproj = MulQuant(nbit=module.qproj.nbit)
         qproj.scale.data = sproj
-        qproj.zp.data = module.qproj.zero_point
+        qproj.zero_point.data = module.qproj.zero_point
 
         # fuse the scaling factors
         sdeq = self.quantizer_fuse(module.qproj, module.proj.wq)

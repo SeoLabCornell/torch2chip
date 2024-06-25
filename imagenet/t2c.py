@@ -160,7 +160,7 @@ def main():
     # convert the model to the compression-ready model
     if args.wbit < 32 or args.wbit < 32:
         converter = wrapper(model, wbit=args.wbit, abit=args.abit, state_dict=state_tmp)
-        model = converter.reload(wqtype=args.wqtype, xqtype=args.xqtype)
+        model = converter.reload_fake_quant(wqtype=args.wqtype, xqtype=args.xqtype)
 
     # resume from the checkpoint
     model.load_state_dict(state_tmp)

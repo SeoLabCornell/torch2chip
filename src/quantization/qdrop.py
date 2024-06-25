@@ -1,7 +1,7 @@
 """
 T2C version of QDrop
 
-https://openreview.net/forum?id=ySQH0oDyp7
+Paper: https://openreview.net/forum?id=ySQH0oDyp7
 """
 
 import torch

@@ -80,17 +80,23 @@ def save_checkpoint(state, is_best, save_path, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(save_path+filename, save_path+'model_best.pth.tar')
 
-def load_checkpoint(ckpt, state):
+def load_checkpoint(ckpt, state=None):
     checkpoint = torch.load(ckpt)
-    sdict = checkpoint['state_dict']
+
+    if "state_dict" in checkpoint.keys():
+        sdict = checkpoint['state_dict']
+    else:
+        sdict = checkpoint
 
     new_state_dict = OrderedDict()
     
     for k, v in sdict.items():
         name = k
         new_state_dict[name] = v
-
-    state.update(new_state_dict)
+    
+    if state is not None:
+        state.update(new_state_dict)
+    
     return state
 
 def load_ddp_checkpoint(ckpt, state):

@@ -169,7 +169,6 @@ class Trainer(object):
                 losses.update(loss.mean().item(), inputs.size(0))
                 top1.update(prec1.item(), inputs.size(0))
                 top5.update(prec5.item(), inputs.size(0))
-                break
 
         self.logger_dict["valid_loss"] = losses.avg
         self.logger_dict["valid_top1"] = top1.avg

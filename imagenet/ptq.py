@@ -15,7 +15,7 @@ from src.trainer.ptq import PTQ
 from src.t2c.convert import Vanilla4Compress
 from src.models.imagenet.mobilenetv1 import mobilenetv1
 
-from torchvision.models import resnet18, resnet34, resnet50, ResNet18_Weights, ResNet34_Weights, ResNet50_Weights
+from torchvision.models import resnet18, resnet34, resnet50, mobilenet_v2, ResNet18_Weights, ResNet34_Weights, ResNet50_Weights, MobileNet_V2_Weights
 from torchvision.models import vgg16_bn, VGG16_BN_Weights
 
 TRAINERS = {
@@ -106,6 +106,10 @@ def main():
         model = mobilenetv1()
         ckpt = load_ddp_checkpoint(ckpt=args.resume, state=model.state_dict())
         model.load_state_dict(ckpt)
+    
+    elif args.model == "mobilenetv2":
+        model = mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
+
     else:
         raise NotImplementedError(f"Unknown model architecture: {args.model}")
 
@@ -124,8 +128,8 @@ def main():
         logger=logger
     )
 
-    # trainer.valid_epoch()
-    # logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    trainer.valid_epoch()
+    logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
 
     # start ptq
     trainer.fit()

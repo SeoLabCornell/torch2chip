@@ -1,3 +1,0 @@
-"""
-Export the low precision 
-"""

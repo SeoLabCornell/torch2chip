@@ -143,7 +143,11 @@ class T2C(object):
         tensor_dir = os.path.join(path, "tensors")
         os.makedirs(tensor_dir, exist_ok=True)
 
+        size_dict = {}
+        json_path = os.path.join(tensor_dir, "matmul.json")
+
         for k, v in tqdm(self.node_dict.items()):
+            module_dict = {}
             x1, x2, y = v
 
             print(f"{k} | x1min = {x1.min().item()}, x1max = {x1.max().item()}")
@@ -153,33 +157,14 @@ class T2C(object):
             torch.save(x2.int().cpu(), os.path.join(tensor_dir, f"{k}_x2.pt"))
             torch.save(y.int().cpu(), os.path.join(tensor_dir, f"{k}_y.pt"))
 
-    def dump_size(self, path):
-        size_dict = {}
-        tensor_dir = os.path.join(path, "tensors")
-        json_path = os.path.join(tensor_dir, "matmul.json")
+            module_dict["x_shape"] = list(x1.shape)
+            module_dict["y_shape"] = list(x2.shape)
+            module_dict["z_shape"] = list(y.shape)
 
-        nz = 0
-        total = 0
-        
-        for n, m in self.model.named_modules():
-            if isinstance(m, (IntMatMul, ConvOPS)):
-                module_dict = {}
-
-                module_dict["x_shape"] = m.x_shape.tolist()
-                module_dict["y_shape"] = m.y_shape.tolist()
-                module_dict["z_shape"] = m.z_shape.tolist()
-
-                size_dict[n] = module_dict
-            
-            elif isinstance(m, _QBaseLinear):
-                nz += m.mask.sum().item()
-                total += m.mask.numel() 
+            size_dict[k] = module_dict
 
         with open(json_path, "w") as outfile: 
             json.dump(size_dict, outfile)
-
-        sparsity = 1 - nz / total
-        print(f"Sparsity = {sparsity * 100:.2f}")
     
     def export(self, dataloader, path, export_samples):
         print("[T2C EXPORT]: Saving model and tensors!")
@@ -197,7 +182,6 @@ class T2C(object):
 
         # save model and tensors
         self.save(path)
-        self.dump_size(path)
 
     def bert_export(self, dataloader, path, export_samples):
         print("[T2C EXPORT for BERT]: Saving model and tensors!")
@@ -217,4 +201,3 @@ class T2C(object):
 
         # save model and tensors
         self.save(path)
-        self.dump_size(path)

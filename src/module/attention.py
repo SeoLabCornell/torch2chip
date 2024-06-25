@@ -48,9 +48,9 @@ class QAttention(nn.Module):
         self.attn_scale.scale.data.copy_(self.scale)
 
         # quantizers 
-        self.xq = _QBase(nbit=32)
-        self.qqkv = _QBase(nbit=32)
-        self.qproj = _QBase(nbit=32)
+        self.xq = _QBase(nbit=8)
+        self.qqkv = _QBase(nbit=8)
+        self.qproj = _QBase(nbit=8)
 
         # training flag
         self.train_flag = True
@@ -114,7 +114,6 @@ class QAttention(nn.Module):
         else:
             x = self.evalFunc(q, k, v)
 
-        # reshape
         x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.qkv_deq(x)
@@ -216,6 +215,7 @@ class QWindowAttention(nn.Module):
             attn = attn.view(-1, num_win, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
 
+        
         attn = self.softmax(attn)
         attn = self.attn_drop(attn)
         x = attn @ v
