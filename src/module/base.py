@@ -15,7 +15,7 @@ class IntMatMul(nn.Module):
     def forward(self, x, y):
         z = torch.matmul(x, y)
         return z
-    
+
 class ConvOPS(nn.Module):
     def __init__(self, stride:int=1, padding:int=0, dilation:int=1, groups:int=1):
         super().__init__()

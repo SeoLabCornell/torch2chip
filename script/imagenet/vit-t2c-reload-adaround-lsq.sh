@@ -4,7 +4,7 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=vit_small
+model=vit_tiny
 batch_size=100
 loss=cross_entropy
 weight_decay=0.0005
@@ -16,8 +16,8 @@ xqtype="lsq_token"
 wqtype="adaround"
 ttype=ptq
 
-save_path="./save/imagenet/vit_small/lsq_token_adaround/vit_small_w8_a8_lr1e-4_batch100_cross_entropyloss_all/t2c/"
-pre_trained="./save/imagenet/vit_small/lsq_token_adaround/vit_small_w8_a8_lr1e-4_batch100_cross_entropyloss_all/t2c/t2c_model.pth.tar"
+save_path="./save/imagenet/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr1e-4_batch100_cross_entropyloss_all/t2c/"
+pre_trained="./save/imagenet/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr1e-4_batch100_cross_entropyloss_all/t2c/t2c_model.pth.tar"
 
 python3 -W ignore ./imagenet/reload.py \
     --save_path ${save_path} \

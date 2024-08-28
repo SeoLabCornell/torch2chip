@@ -14,7 +14,7 @@ dataset="imagenet"
 log_file="t2c.log"
 wbit=8
 abit=8
-xqtype="lsq_token"
+xqtype="qdrop_token"
 wqtype="minmax_channel"
 ttype=ptq
 

@@ -4,7 +4,7 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=vit_small
+model=vit_tiny
 epochs=1
 batch_size=100
 lr=1e-4

@@ -38,4 +38,3 @@ python3 -W ignore ./imagenet/t2c.py \
     --swl 32 \
     --sfl 26 \
     --export_samples 8 \
-    

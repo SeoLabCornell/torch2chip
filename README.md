@@ -2,7 +2,7 @@
 
 Torch2Chip is an End-to-end Deep Neural Network compression toolkit designed for prototype accelerator designer for algorithm-hardware co-design with high-degree of algorithm customization.
 
-**[[Website] (coming soon)]()**  | **[[Documentation] (coming soon)]()**
+**[[Documentation]](https://mengjian0502.github.io/t2c-doc/)**
 
 ## :rocket: News & Update
 
@@ -11,7 +11,7 @@ Torch2Chip is an End-to-end Deep Neural Network compression toolkit designed for
 - **[04/26/2024]:** INT8 Vision models and checkpoints are available for download!
   - Integer-only model with fully observable input, weight, output tensors. 
 - **[04/26/2024]:** INT8 BERT model is ready with SST-2 dataset demo (Beta version). 
-
+- **[07/18/2024]:** We apologize for the delay but the documentation and tutorials are finally online **[Link to the documentation](https://mengjian0502.github.io/t2c-doc/)**!. 
 
 ## :question: Why Torch2Chip?
 

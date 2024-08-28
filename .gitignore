@@ -11,3 +11,4 @@ tmp/
 *.err
 *.out
 *.tar.gz
+.vscode/

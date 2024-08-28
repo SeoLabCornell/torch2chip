@@ -108,7 +108,7 @@ class T2C(object):
         self.hook()
     
     def fused_model(self):
-        # self.scale_bias2int()
+        self.scale_bias2int()
         return self.model
     
     def get_row_col(self, shape:List):

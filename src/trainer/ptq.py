@@ -125,7 +125,7 @@ class PTQ(object):
 
         with torch.no_grad():
             out = self.model(batch)
-        
+
         handle.remove()
         return hook.input[0].detach(), hook.output.detach()
 

@@ -4,26 +4,26 @@ fi
 
 export CUDA_VISIBLE_DEVICES=0
 
-model=vit_small
+model=resnet50
 epochs=1
-batch_size=100
-lr=1e-4
-loss=cross_entropy
-weight_decay=1e-4
+batch_size=64
+lr=1e-3
+loss=mse
+weight_decay=4e-5
 dataset="imagenet"
 log_file="training.log"
 
 wbit=8
 abit=8
 xqtype="qdrop"
-wqtype="mx_channel"
-num_samples=500
-ttype=qattn
+wqtype="adaround"
+num_samples=1024
+ttype=ptq
 layer_train=True
 
-save_path="./save/${dataset}/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_all/"
+save_path="./save/${dataset}/${model}/${ttype}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr${lr}_batch${batch_size}_${loss}loss_layer_train${layer_train}/"
 
-python3 -W ignore ./imagenet/vit.py \
+python3 -W ignore ./imagenet/ptq.py \
     --save_path ${save_path} \
     --model ${model} \
     --epochs ${epochs} \

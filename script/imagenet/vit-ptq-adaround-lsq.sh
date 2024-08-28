@@ -15,7 +15,7 @@ log_file="training.log"
 
 wbit=8
 abit=8
-xqtype="lsq_token"
+xqtype="qdrop"
 wqtype="adaround"
 num_samples=500
 ttype=qattn

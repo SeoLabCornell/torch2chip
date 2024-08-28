@@ -5,23 +5,21 @@ fi
 export CUDA_VISIBLE_DEVICES=0
 
 model=vit_small
-epochs=200
 batch_size=100
-lr=0.1
 loss=cross_entropy
 weight_decay=0.0005
 dataset="imagenet"
-log_file="t2c.log"
+log_file="reload.log"
 wbit=8
 abit=8
-xqtype="lsq_token"
+xqtype="qdrop_token"
 wqtype="minmax_channel"
 ttype=ptq
 
-save_path="./save/imagenet/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr1e-4_batch100_cross_entropyloss_all/t2c/"
-pre_trained="./save/imagenet/${model}/${xqtype}_${wqtype}/${model}_w${wbit}_a${abit}_lr1e-4_batch100_cross_entropyloss_all/model_best.pth.tar"
+save_path="./save/imagenet/vit_small/qdrop_token_minmax_channel/vit_small_w8_a8_lr1e-4_batch100_cross_entropyloss_all/t2c/"
+pre_trained="./save/imagenet/vit_small/qdrop_token_minmax_channel/vit_small_w8_a8_lr1e-4_batch100_cross_entropyloss_all/t2c/t2c_model.pth.tar"
 
-python3 -W ignore ./imagenet/t2c.py \
+python3 -W ignore ./imagenet/reload.py \
     --save_path ${save_path} \
     --model ${model} \
     --batch_size ${batch_size} \
@@ -37,6 +35,4 @@ python3 -W ignore ./imagenet/t2c.py \
     --val_dir "/share/seo/imagenet/val/" \
     --evaluate \
     --trainer qattn \
-    --swl 32 \
-    --sfl 26 \
-    --export_samples 1 \
+    

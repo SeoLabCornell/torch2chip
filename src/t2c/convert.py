@@ -94,7 +94,7 @@ class Vanilla4Compress(object):
         )
 
         new_layer.weight.data[:] = layer.weight
-        
+
         if has_bias:
             new_layer.bias.data[:] = layer.bias
         return new_layer
