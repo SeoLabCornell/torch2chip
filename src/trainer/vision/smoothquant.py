@@ -8,7 +8,7 @@ from typing import List, Union
 
 from src.module.attention import QAttention, QWindowAttention
 from src.module.base import _QBaseLinear
-from src.trainer.ptq import PTQViT
+from src.trainer.vision.ptq import PTQViT
 from timm.layers.mlp import Mlp
 
 class SmoothQuantPTQViT(PTQViT):
@@ -30,7 +30,7 @@ class SmoothQuantPTQViT(PTQViT):
         for batch in cached_data:
             x, _ = batch
             xmax = torch.max(xmax, x.max())
-        
+
         return xmax
 
     def collect_scale(self):
@@ -44,7 +44,7 @@ class SmoothQuantPTQViT(PTQViT):
                 wmax = m.weight.abs().max()
 
                 scale = (xmax.pow(self.alpha) / wmax.pow(1 - self.alpha)).clamp(1e-5)
-                
+
                 sscale[n] = scale
 
         del cached_data

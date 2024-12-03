@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from src.module.base import _QBase
 from typing import List, Union
-from src.module.fuse import QConvReLU, QConvBNReLU, _QBaseConv2d, _QBaseLinear, FusedLinear, MulQuant
+from src.module.fuse import QConvReLU, QConvBNReLU, _QBaseConv2d, _QBaseLinear, MulShift
 from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, BaseChannelWiseObserver
 
 
@@ -44,21 +44,21 @@ class LayerFuser(object):
         if layer.bias is not None:
             bias = layer.bias.data
 
-        tmp = FusedLinear(layer.in_features, layer.out_features, True, wbit=layer.wbit, abit=layer.abit, train_flag=False)
+        scaler = MulShift(dtype=torch.float32)
+        sq = 1 / (layer.wq.scale.data * layer.aq.scale.data)
 
-        # insert the linear layer
-        setattr(tmp, "linear", layer)
-
-        sq = 1 / (tmp.linear.wq.scale.data * tmp.linear.aq.scale.data)
+        # scaler
+        scaler.scale.data = sq
 
         # assign the scaling factor to the quantizer
         if isinstance(layer.wq.observer, BaseChannelWiseObserver):
-            tmp.scaler.scale.data = sq.squeeze(1).unsqueeze(0)
+            scaler.scale.data = sq.squeeze(1).unsqueeze(0)
         else:
-            tmp.scaler.scale.data = sq
+            scaler.scale.data = sq
 
-        tmp.scaler.bias.data = bias.unsqueeze(0)
-        return tmp
+        scaler.bias.data = bias.unsqueeze(0)
+        setattr(scaler, "yq", scaler)
+        return layer
 
     def quantizer_bn_fuse(self, xq:_QBase, wq:_QBase, bn:Union[nn.BatchNorm1d, nn.BatchNorm2d]):
         sq = 1 / (wq.scale.data * xq.scale.data)

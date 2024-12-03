@@ -6,15 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from src.quantization.observer import BaseObserver
-
-class IntMatMul(nn.Module):
-    def __init__(self, nbit:int):
-        super().__init__()
-        self.nbit = nbit
-
-    def forward(self, x, y):
-        z = torch.matmul(x, y)
-        return z
+from src.module.ops import IntActWeight
 
 class ConvOPS(nn.Module):
     def __init__(self, stride:int=1, padding:int=0, dilation:int=1, groups:int=1):
@@ -172,9 +164,9 @@ class _QBaseConv2d(nn.Conv2d):
         else:
             y = self.evalFunc(x)
 
-        out = self.yq(y)
-        return out
-    
+        y = self.yq(y)
+        return y
+
 class _QBaseLinear(nn.Linear):
     r"""Basic low precision linear layer
 
@@ -209,28 +201,29 @@ class _QBaseLinear(nn.Linear):
         self.train_flag = False
         self.wq.inference()
         self.aq.inference()
+        self.weight.requires_grad_(False)
 
-        self.register_buffer("qweight", torch.ones_like(self.weight))
-        self.ops = IntMatMul(nbit=self.abit)
+        self.register_buffer("qweight", torch.ones_like(self.weight, dtype=torch.int8))
+        self.ops = IntActWeight(nbit=8)
 
     def trainFunc(self, x:torch.Tensor):
         wq = self.wq(self.weight)
         xq = self.aq(x)
-        
-        y = F.linear(xq, wq.mul(self.mask), self.bias)
+
+        y = F.linear(xq, wq, self.bias)
         return y
 
+    @torch.no_grad
     def evalFunc(self, x:torch.Tensor):
         wq = self.wq(self.weight)
+        xq = x.div(self.aq.scale).round().clamp(-128, 127)
 
         if self.initialize_qweight:
-            wq = self.wq(self.weight)
-            self.qweight.copy_(wq.data.mul(self.mask))
+            wq = self.wq(self.weight).to(torch.int8)
+            self.weight.data = wq
             self.initialize_qweight = False
-        
-        xq = self.aq(x)
-        y = self.ops(xq, self.qweight.transpose(0,1))
 
+        y = self.ops(xq, self.weight)
         return y
 
     def forward(self, x:torch.Tensor):
@@ -238,9 +231,10 @@ class _QBaseLinear(nn.Linear):
             y = self.trainFunc(x)
         else:
             y = self.evalFunc(x)
-        y = self.yq(y)
-        return y
-    
+
+        out = self.yq(y)
+        return out
+
 def round_ste(x:torch.Tensor):
     """
     Quantization with STE

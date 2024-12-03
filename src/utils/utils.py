@@ -111,3 +111,6 @@ def load_ddp_checkpoint(ckpt, state):
 
     state.update(new_state_dict)
     return state
+
+def gpufloat2cpuint(tensor:torch.Tensor, dtype=torch.int32):
+    return tensor.to(dtype).cpu().detach()

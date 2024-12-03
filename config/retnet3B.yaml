@@ -1,0 +1,36 @@
+model:
+  model_type: "Spiral-AI/Spiral-RetNet-3b-base"
+  tokenizer: "cyberagent/calm2-7b-chat"
+
+dataset:
+  name: "wikitext"
+  path: "wikitext-2-raw-v1"
+  split: "test"
+
+save:
+  run_dir: "save/retnet-3b-hf/"
+  logger: "inference.log"
+
+eval:
+  chunk_size: 2048
+  n_samples: 16
+
+quantization:
+  wbit: 4
+  abit: 8
+  num_samples: 512
+  wqtype: smooth_quant_mxint
+  xqtype: smooth_quant_token
+
+train:
+  batch_size: 512
+
+smooth:
+  alpha: 0.85
+
+t2c:
+  swl: 32
+  sfl: 26
+
+export:
+  export_samples: 0

@@ -6,7 +6,7 @@ from src.module.base import _QBaseLinear, _QBase
 from src.module.fuse import MulQuant, LinearMulShift
 from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, BaseChannelWiseObserver
 
-from timm.layers.mlp import Mlp
+from timm.models.layers.mlp import Mlp
 
 class ViTFuser(object):
     def __init__(self, model: nn.Module):
@@ -35,7 +35,7 @@ class ViTFuser(object):
                 sw = 1 / (scale_x * scale_w)
         else:
             if isinstance(wq.observer, BaseChannelWiseObserver):
-                scale_w = scale_w = scale_w.unsqueeze(0).transpose(1,2)
+                scale_w = scale_w.unsqueeze(0).transpose(1,2)
             sw = 1 / (scale_x * scale_w)
         
         return sw

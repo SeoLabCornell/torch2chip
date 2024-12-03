@@ -19,7 +19,7 @@ from datasets import load_dataset
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from src.t2c.convert import BERT4Compress
-from src.trainer.ptq import PTQBERT
+from src.trainer.vision.ptq import PTQBERT
 from src.utils.utils import str2bool, save_checkpoint
 
 parser = argparse.ArgumentParser(description='T2C for BERT')

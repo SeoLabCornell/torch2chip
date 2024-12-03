@@ -7,10 +7,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from typing import Optional, Tuple
-from src.module.base import _QBase, _QBaseLinear, IntMatMul
+
+from transformers.models.llama.configuration_llama import LlamaConfig
+from src.models.lm.configuration_retnet import RetNetConfig
+from src.module.base import _QBase, _QBaseLinear
+from src.module.ops import FloatMatMul, BatchIntMatMul, BatchHeadIntMatMul
 from src.module.fuse import MulShift
-from timm.layers import to_2tuple, trunc_normal_
+from src.models.lm.retnet import MultiScaleRetention
+
+from timm.models.layers.weight_init import trunc_normal_
 from timm.models.swin_transformer import get_relative_position_index
+
+from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb, repeat_kv
+from transformers.cache_utils import Cache
 
 class QAttention(nn.Module):
     def __init__(
@@ -56,8 +65,8 @@ class QAttention(nn.Module):
         self.train_flag = True
 
         # matmul operator
-        self.qk = IntMatMul(nbit=32)
-        self.attnv = IntMatMul(nbit=32)
+        self.qk = BatchHeadIntMatMul(nbit=8)
+        self.attnv = FloatMatMul(nbit=8)
     
     def inference(self):
         self.train_flag = False
@@ -81,9 +90,8 @@ class QAttention(nn.Module):
         return x
     
     def evalFunc(self, q, k, v):
-        q, k, v = q.double(), k.double(), v.double()
-
-        attn = self.qk(q, k.transpose(-2, -1))
+        # q, k, v = q.to(torch.int8), k.to(torch.int8), v.to(torch.int8)
+        attn = self.qk(q, k)
         attn = self.attn_scale(attn)
 
         attn = F.softmax(attn, dim=-1)
@@ -94,7 +102,7 @@ class QAttention(nn.Module):
         x = self.attnv(attn, v)
         x = self.qproj(x)
 
-        return x.float()
+        return x.to(torch.float32)
     
     def forward(self, x:torch.Tensor):
         B, N, C = x.shape
@@ -119,7 +127,7 @@ class QAttention(nn.Module):
         x = self.qkv_deq(x)
         x = self.proj_drop(x)
         return x
-    
+
 class QWindowAttention(nn.Module):
     """ Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports shifted and non-shifted windows.
@@ -150,7 +158,7 @@ class QWindowAttention(nn.Module):
         """
         super().__init__()
         self.dim = dim
-        self.window_size = to_2tuple(window_size)  # Wh, Ww
+        self.window_size = (window_size, window_size)  # Wh, Ww
         win_h, win_w = self.window_size
         self.window_area = win_h * win_w
         self.num_heads = num_heads
@@ -196,8 +204,8 @@ class QWindowAttention(nn.Module):
         self.proj.inference()
 
         # matmul operator
-        self.qk = IntMatMul(nbit=32)
-        self.attnv = IntMatMul(nbit=32)
+        self.qk = BatchIntMatMul(nbit=32)
+        self.attnv = BatchIntMatMul(nbit=32)
 
     def _get_rel_pos_bias(self) -> torch.Tensor:
         relative_position_bias = self.relative_position_bias_table[
@@ -215,7 +223,6 @@ class QWindowAttention(nn.Module):
             attn = attn.view(-1, num_win, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
 
-        
         attn = self.softmax(attn)
         attn = self.attn_drop(attn)
         x = attn @ v
@@ -333,8 +340,8 @@ class QBertSelfAttention(nn.Module):
         self.train_flag = False
 
         # matmul
-        self.qk = IntMatMul(nbit=32)
-        self.attnv = IntMatMul(nbit=32)
+        self.qk = BatchIntMatMul(nbit=32)
+        self.attnv = BatchIntMatMul(nbit=32)
     
     def trainFunc(
         self,
@@ -553,3 +560,129 @@ class QBertSelfAttention(nn.Module):
             )
 
         return output
+    
+class QLlamaAttention(LlamaAttention):
+    """
+    Llama Attention with Low precision operations
+    """
+
+    def __init__(self, config: LlamaConfig, layer_idx: int, dtype=torch.float16):
+        super().__init__(config, layer_idx)
+
+        # t2c base layer
+        self.q_proj = _QBaseLinear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.k_proj = _QBaseLinear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.v_proj = _QBaseLinear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.o_proj = _QBaseLinear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias).to(torch.float16)
+
+        # batch matmul
+        self.qk = BatchHeadIntMatMul(nbit=8)
+    
+    def manual_sdpa(self, query:torch.Tensor, key:torch.Tensor, value:torch.Tensor, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+        L, S = query.size(-2), key.size(-2)
+        scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+        attn_bias = torch.zeros(L, S, dtype=query.dtype).cuda()
+
+        if is_causal:
+            assert attn_mask is None
+            temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0).cuda()
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+            else:
+                attn_bias += attn_mask
+
+        attn_weight = query @ key.transpose(-2, -1) * scale_factor
+        attn_weight += attn_bias
+        attn_weight = torch.softmax(attn_weight, dim=-1)
+        attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+        return attn_weight @ value
+
+    # Adapted from LlamaAttention.forward
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if output_attentions:
+            return super().forward(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+            )
+
+        bsz, q_len, _ = hidden_states.size()
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        if position_embeddings is None:
+            cos, sin = self.rotary_emb(value_states, position_ids)
+        else:
+            cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+        if past_key_value is not None:
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups)
+
+        causal_mask = attention_mask
+        if attention_mask is not None:
+            causal_mask = causal_mask[:, :, :, : key_states.shape[-2]]
+
+        if query_states.device.type == "cuda" and causal_mask is not None:
+            query_states = query_states.contiguous()
+            key_states = key_states.contiguous()
+            value_states = value_states.contiguous()
+
+        # TODO: Quantizers
+        attn_output = self.manual_sdpa(
+            query_states,
+            key_states,
+            value_states,
+            attn_mask=causal_mask,
+            dropout_p=self.attention_dropout if self.training else 0.0,
+            is_causal=causal_mask is None and q_len > 1,
+        )
+
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.view(bsz, q_len, -1)
+
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output, None, past_key_value
+    
+class QMultiScaleRetention(MultiScaleRetention):
+    def __init__(self, config: RetNetConfig, gate_fn="swish", use_bias=False, tensor_parallel=False):
+        super().__init__(config, gate_fn, use_bias, tensor_parallel)
+
+        self.q_proj = _QBaseLinear(self.embed_dim, self.embed_dim, bias=use_bias)
+        self.k_proj = _QBaseLinear(self.embed_dim, self.embed_dim, bias=use_bias)
+        self.v_proj = _QBaseLinear(self.embed_dim, self.value_dim, bias=use_bias)
+        self.g_proj = _QBaseLinear(self.embed_dim, self.value_dim, bias=use_bias)
+
+        self.out_proj = _QBaseLinear(self.value_dim, self.embed_dim, bias=use_bias)

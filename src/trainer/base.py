@@ -11,60 +11,71 @@ class Trainer(object):
     """
     def __init__(self,
         model: nn.Module,
-        loss_type: str, 
         trainloader, 
         validloader,
-        args,
+        config,
         logger,
     ):  
         # model architecture
         self.model = model
 
         # args
-        self.args = args
+        self.config = config
+        self.run_dir = config["save"]["run_dir"]
 
         # loader
         self.trainloader = trainloader
         self.validloader = validloader
-        
+
+        # optimizer time
+        train_config = self.config["train"]
+        loss_type = train_config["loss_type"]
+        optim_type = train_config["optim_type"]
+        lr_sch = train_config["lr_sch"]
+        mix_prec = train_config["mix_prec"]
+        self.epochs = train_config["epochs"]
+
         # loss func
         if loss_type == "cross_entropy":
             self.criterion = torch.nn.CrossEntropyLoss().cuda()
         elif loss_type == "mse":
             self.criterion = torch.nn.MSELoss().cuda()
         elif loss_type == "smooth_ce":
-            self.criterion = LabelSmoothingCrossEntropyLoss(args.num_classes, smoothing=args.smoothing)
+            self.criterion = LabelSmoothingCrossEntropyLoss(self.config["dataset"]["num_classes"], smoothing=train_config["smoothing"])
         else:
             raise NotImplementedError("Unknown loss type")
 
-        if args.optimizer == "sgd":
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=self.args.weight_decay)
-        elif args.optimizer == "adam":
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr, betas=(self.args.beta1, self.args.beta2), weight_decay=self.args.weight_decay)
-        elif args.optimizer == "adamw":
-            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=args.lr, betas=(0.9, 0.95))
-        
+        if optim_type == "sgd":
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=train_config["lr"], momentum=train_config["momentum"], weight_decay=train_config["weight_decay"])
+        elif optim_type == "adam":
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=train_config["lr"], betas=(0.9, 0.999), weight_decay=train_config["weight_decay"])
+        elif optim_type == "adamw":
+            self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=train_config["lr"], betas=(0.9, 0.95))
+
         # learning rate scheduler
-        if args.lr_sch == "step":
-            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.schedule, last_epoch=-1)
-        elif args.lr_sch == "cos":
-            self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.args.epochs, eta_min=1e-5)
-        elif args.lr_sch == "cos_warmup":
-            self.lr_scheduler = LinearWarmupCosineAnnealingLR(self.optimizer, args.warmup, max_epochs=self.args.epochs, warmup_start_lr=args.lr, eta_min=1e-5)
+        if lr_sch == "step":
+            self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=train_config["schedule"], last_epoch=-1)
+        elif lr_sch == "cos":
+            self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=1e-5)
+        elif lr_sch == "cos_warmup":
+            warmup = self.config["train"].get("warmup", 1)
+            self.lr_scheduler = LinearWarmupCosineAnnealingLR(self.optimizer, warmup, max_epochs=self.epochs, warmup_start_lr=train_config["lr"], eta_min=1e-5)
 
         # cuda
         self.use_cuda = torch.cuda.is_available()
         if self.use_cuda:
             self.model = self.model.cuda()
 
-        if self.args.mixed_prec:
-            self.scaler = torch.cuda.amp.GradScaler()
+        if mix_prec:
+            self.scaler = torch.amp.GradScaler()
         else:
             self.scaler = None
 
         # logger
         self.logger = logger
         self.logger_dict = {}
+        self.logger.info("\nStart training: lr={}, loss={}, optim={}, run_dir={}".format(train_config["lr"], loss_type, optim_type, self.run_dir))
+        self.logger.info("Total Epochs = {}".format(train_config["epochs"]))
 
     def base_forward(self, inputs, target):
         """Foward pass of NN
@@ -175,12 +186,10 @@ class Trainer(object):
         self.logger_dict["valid_top5"] = top5.avg
 
     def fit(self):
-        self.logger.info("\nStart training: lr={}, loss={}, optim={}".format(self.args.lr, self.args.loss_type, self.args.optimizer))
-
         start_time = time.time()
         epoch_time = AverageMeter()
         best_acc = 0.
-        for epoch in range(self.args.epochs):
+        for epoch in range(self.epochs):
             self.logger_dict["ep"] = epoch+1
             self.logger_dict["lr"] = self.optimizer.param_groups[0]['lr']
             
@@ -201,7 +210,7 @@ class Trainer(object):
             }
 
             filename=f"checkpoint.pth.tar"
-            save_checkpoint(state, is_best, self.args.save_path, filename=filename)
+            save_checkpoint(state, is_best, self.run_dir, filename=filename)
 
             # terminal log
             columns = list(self.logger_dict.keys())
@@ -214,6 +223,6 @@ class Trainer(object):
             start_time = time.time()
 
             need_hour, need_mins, need_secs = convert_secs2time(
-            epoch_time.avg * (self.args.epochs - epoch))
+            epoch_time.avg * (self.epochs - epoch))
             print('[Need: {:02d}:{:02d}:{:02d}]'.format(
                 need_hour, need_mins, need_secs))

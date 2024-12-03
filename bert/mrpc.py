@@ -21,7 +21,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from src.utils.utils import str2bool, save_checkpoint, load_checkpoint, AverageMeter
 from src.t2c.convert import BERT4Compress
-from src.trainer.ptq import PTQBERT
+from src.trainer.vision.ptq import PTQBERT
 
 parser = argparse.ArgumentParser(description='T2C for BERT')
 # parser.add_argument('--model', type=str, help='model architecture')

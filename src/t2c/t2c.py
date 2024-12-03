@@ -7,12 +7,14 @@ from tqdm import tqdm
 from typing import List
 
 from src.module.fuse import MulShift
-from src.module.base import _QBaseLinear, IntMatMul, ConvOPS
+from src.module.base import ConvOPS
+from src.module.ops import FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight 
 from src.t2c.fusers.resnet import ResNet18Fuser, ResNet34Fuser, ResNet50Fuser
 from src.t2c.fusers.vgg import VGGFuser
 from src.t2c.fusers.vit import ViTFuser, SwinFuser
 from src.t2c.fusers.mobilenet import MobileNetV1Fuser
 from src.t2c.fusers.bert import BERTFuser
+from src.t2c.fusers.lm import LlamaFuser
 
 from fxpmath import Fxp
 
@@ -21,14 +23,16 @@ FUSERS = {
     "resnet34": ResNet34Fuser,
     "resnet50": ResNet50Fuser,
     "vit_large": ViTFuser,
-    "vit_base": ViTFuser,
-    "vit_small": ViTFuser,
-    "vit_tiny": ViTFuser,
+    "vit_base_patch16_224": ViTFuser,
+    "vit_small_patch16_224": ViTFuser,
+    "vit_tiny_patch16_224": ViTFuser,
     "swin_tiny_patch4_window7_224": SwinFuser,
     "swin_base_patch4_window7_224": SwinFuser,
     "mobilenetv1": MobileNetV1Fuser,
     "vgg16_bn": VGGFuser,
     "bert": BERTFuser,
+    "meta-llama/Llama-3.2-3B-Instruct": LlamaFuser,
+    "meta-llama/Llama-2-7b-hf": LlamaFuser
 }
 
 def feature_hook(name, state_dict):
@@ -37,17 +41,15 @@ def feature_hook(name, state_dict):
     return hook
 
 class T2C(object):
-    def __init__(self, model:nn.Module, swl:int, sfl:int, args):
-        self.swl = swl
-        self.sfl = sfl
-        self.args = args
-
-        self.swl = swl
-        self.sfl = sfl
-        self.args = args
+    def __init__(self, model:nn.Module, config):
+        self.swl = config["t2c"]["swl"]
+        self.sfl = config["t2c"]["sfl"]
+        self.config = config
+        self.model_type = config["model"]["model_type"]
+        self.batch_size = config["train"]["batch_size"]
 
         # model fusion
-        fuser = FUSERS[str(args.model)](model)
+        fuser = FUSERS[self.model_type](model)
 
         # switch to inference mode
         fuser.inference()
@@ -98,7 +100,7 @@ class T2C(object):
     
     def hook(self):
         for n, m in self.model.named_modules():
-            if isinstance(m, (IntMatMul, ConvOPS)):
+            if isinstance(m, (FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight, ConvOPS)):
                 m.register_forward_hook(feature_hook(n, self.node_dict))
     
     def register_node(self):
@@ -108,9 +110,9 @@ class T2C(object):
         self.hook()
     
     def fused_model(self):
-        self.scale_bias2int()
+        # self.scale_bias2int()
         return self.model
-    
+
     def get_row_col(self, shape:List):
         if len(shape) == 4:
             scale, row, col = shape[1], shape[2], shape[3]
@@ -168,7 +170,6 @@ class T2C(object):
     
     def export(self, dataloader, path, export_samples):
         print("[T2C EXPORT]: Saving model and tensors!")
-        assert export_samples < self.args.batch_size, f"Picking {export_samples} samples from {self.args.batch_size}!"
         
         # select a sample batch for quick inference
         inputs, target = next(iter(dataloader))
@@ -185,7 +186,7 @@ class T2C(object):
 
     def bert_export(self, dataloader, path, export_samples):
         print("[T2C EXPORT for BERT]: Saving model and tensors!")
-        assert export_samples < self.args.batch_size, f"Picking {export_samples} samples from {self.args.batch_size}!"
+        assert export_samples < self.batch_size, f"Picking {export_samples} samples from {self.batch_size}!"
         
         batch = next(iter(dataloader))
 

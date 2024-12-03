@@ -11,7 +11,7 @@ import argparse
 from src.utils.utils import str2bool, load_ddp_checkpoint, save_checkpoint
 from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
-from src.trainer.ptq import PTQ
+from src.trainer.vision.ptq import PTQ
 from src.t2c.convert import Vanilla4Compress
 from src.models.imagenet.mobilenetv1 import mobilenetv1
 

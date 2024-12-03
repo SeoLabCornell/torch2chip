@@ -1,0 +1,11 @@
+model:
+  model_type: RetNetForCausalLM
+
+dataset:
+  name: "wikitext"
+  path: "wikitext-2-raw-v1"
+
+save:
+  run_dir: "save/retnet3B_wikitext/"
+  logger: "inference.log"
+

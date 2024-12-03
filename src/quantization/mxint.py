@@ -159,8 +159,8 @@ class MXChannelWiseWeightQuantizer(_QBase):
         xg = xg.clamp(self.qlb, self.qub)
 
         # rescale back
-        xg = xg.mul(self.scale)
         xg = xg.mul(2**self.shared_exp)
+        xg = xg.mul(self.scale)
 
         # reshape the tensor
         xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)

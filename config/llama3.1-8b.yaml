@@ -1,0 +1,20 @@
+model:
+  model_type: "meta-llama/Llama-3.1-8B-Instruct"
+
+dataset:
+  name: "wikitext"
+  path: "wikitext-2-raw-v1"
+  split: "test"
+
+save:
+  run_dir: "save/llama3.2-3B_wikitext/"
+  logger: "inference.log"
+
+eval:
+  chunk_size: 2048
+  n_samples: 40
+
+quantization:
+  wbit: 8
+  abit: 8
+  num_samples: 512

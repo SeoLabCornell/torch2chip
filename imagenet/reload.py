@@ -17,7 +17,7 @@ from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
 from src.trainer.pruning import STrainer
 from src.t2c.t2c import T2C
-from src.trainer.ptq import PTQ, PTQViT
+from src.trainer.vision.ptq import PTQ, PTQViT
 from src.t2c.convert import Vanilla4Compress, ViTV4C
 from src.models.imagenet.mobilenetv1 import mobilenetv1
 

@@ -55,7 +55,7 @@ class BaseObserver(nn.Module):
         else:
             max_val_pos = torch.max(-self.lb, self.ub)
             scale = max_val_pos / (float(self.qub - self.qlb) / 2)
-            zero_point = torch.zeros(max_val_pos.size(), dtype=torch.float, device=max_val_pos.device)
+            zero_point = torch.zeros(max_val_pos.size(), dtype=x.dtype, device=max_val_pos.device)
         
         return scale, zero_point
     

@@ -14,10 +14,11 @@ class MulShift(nn.Module):
     bias: Bias value. 
     fl: Fractional bits of the high-precision integer.
     """
-    def __init__(self):
+    def __init__(self, dtype=torch.float32):
         super(MulShift, self).__init__()
-        self.register_buffer("scale", torch.tensor(1.0))
-        self.register_buffer("bias", torch.tensor(0.0))
+        self.dtype = dtype
+        self.register_buffer("scale", torch.tensor(1.0, dtype=dtype))
+        self.register_buffer("bias", torch.tensor(0.0, dtype=dtype))
 
         # fractional bit width
         self.fl = 0.
@@ -27,7 +28,6 @@ class MulShift(nn.Module):
 
     def forward(self, x:torch.Tensor):
         out = x.mul(self.scale).add(self.bias)
-        out = out.mul(2**(-self.fl))
         return out
 
 class MulQuant(nn.Module):
@@ -169,17 +169,21 @@ class FusedLinear(nn.Module):
         return x
     
 class LinearMulShift(nn.Module):
-    def __init__(self, in_features: int, out_features: int, wbit:int=32, abit:int=32, train_flag=True, int_out=False, obit:int=32):
+    def __init__(self, in_features: int, out_features: int, wbit:int=32, abit:int=32, train_flag=True, int_out=False, obit:int=32, dtype=torch.float32):
         super(LinearMulShift, self).__init__()
 
         self.linear = _QBaseLinear(in_features, out_features, True, wbit, abit, train_flag)
-        
+        self.dtype = dtype
+        self.train_flag = False        
         # scaler and shifter
         if int_out:
             self.scaler = MulQuant(nbit=obit, unsigned=False)
         else:
             self.scaler = MulShift()
 
+    def inference(self):
+        self.train_flag = False
+    
     def forward(self, inputs:torch.Tensor) -> torch.Tensor:
         x = self.linear(inputs)
         x = self.scaler(x)

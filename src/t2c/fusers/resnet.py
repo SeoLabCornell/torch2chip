@@ -104,7 +104,7 @@ class ResNet50Fuser(LayerFuser):
 
                 # update the module
                 self.model.conv1 = fm1
-                
+
                 # disable other modules
                 self.model.bn1 = nn.Identity()
                 self.model.relu = nn.Identity()

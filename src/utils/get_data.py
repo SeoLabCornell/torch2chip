@@ -6,8 +6,6 @@ import torch
 import torchvision.transforms as transforms
 from torchvision import datasets
 
-from src.utils.aug import CIFAR10Policy
-
 def get_loader(args):
     # Preparing data
     if args.dataset == 'cifar10':
@@ -67,7 +65,7 @@ def get_loader(args):
         
         drop_last = True if args.mixup_active else False
         train_sampler = torch.utils.data.distributed.DistributedSampler(trainset)
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=args.workers, pin_memory=True, drop_last=drop_last, sampler=train_sampler)        
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, num_workers=args.workers, pin_memory=True, drop_last=drop_last, sampler=train_sampler)
         testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, num_workers=args.workers, pin_memory=True)
         
         num_classes = 100 if args.dataset == "imagenet-100" else 1000

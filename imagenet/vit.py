@@ -7,13 +7,14 @@ sys.path.append("../torch2chip/")
 import os
 import logging
 import argparse
+import torch
 
 from src.utils.utils import str2bool, save_checkpoint
 from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
 from src.trainer.pruning import STrainer
-from src.trainer.ptq import PTQ, PTQViT
-from src.trainer.smoothquant import SmoothQuantPTQViT
+from src.trainer.vision.ptq import PTQ, PTQViT
+from src.trainer.vision.smoothquant import SmoothQuantPTQViT
 from src.t2c.convert import ViTV4C
 
 from timm.models.vision_transformer import vit_tiny_patch16_224, vit_base_patch16_224, vit_small_patch16_224
@@ -57,7 +58,7 @@ parser.add_argument('--save_param', action='store_true', help='save the model pa
 # Fine-tuning
 parser.add_argument('--fine_tune', dest='fine_tune', action='store_true',
                     help='fine tuning from the pre-trained model, force the start epoch be zero')
-parser.add_argument('--resume', default='', type=str, help='path of the pretrained model')
+parser.add_argument('--resume', default=None, type=str, help='path of the pretrained model')
 
 # amp training
 parser.add_argument("--mixed_prec", type=str2bool, nargs='?', const=True, default=False, help="enable amp")
@@ -123,8 +124,8 @@ def main():
         logger=logger
     )
 
-    # trainer.valid_epoch()
-    # logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    trainer.valid_epoch()
+    logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
 
     # start ptq
     trainer.fit()

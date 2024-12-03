@@ -8,18 +8,23 @@ import torch.nn as nn
 from typing import Tuple
 from src.module.base import _QBaseLinear, _QBaseConv2d, _QBase
 from src.module.fuse import MulQuant, MulShift
-from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention
+from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention, QLlamaAttention, QMultiScaleRetention
+from src.module.mlp import QLlamaMLP, QGLU
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
 from src.quantization.qdrop import QDrop, QDropTokenWise
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 from src.quantization.observer import BaseObserver, BaseChannelWiseObserver, BaseTokenWiseObserver
 from src.quantization.smoothquant import SmoothQuantizer, SmoothQuantChannelWiseWeightQuantizer, SmoothQuantTokenWiseQuantizer
+from src.models.lm.retnet import MultiScaleRetention, GLU
 
 from timm.models.vision_transformer import Attention
 from timm.models.swin_transformer import WindowAttention
-from timm.layers.mlp import Mlp
+from timm.models.layers.mlp import Mlp
 from transformers.models.bert.modeling_bert import BertSelfAttention, BertSelfOutput
+
+from transformers.models.llama.modeling_llama import LlamaSdpaAttention, LlamaMLP
+
 
 from typing import Union, Dict
 
@@ -518,7 +523,92 @@ class BERT4Compress(Vanilla4Compress):
 
         return model
 
+
+class Llama4Compress(Vanilla4Compress):
+    def __init__(self, model: nn.Module, wbit: int = 8, abit: int = 8, state_dict: Dict = None) -> None:
+        super().__init__(model, wbit, abit, state_dict)
+
+    def to_half(self, module:nn.Module):
+        for param in module.parameters():
+            param.data = param.data.to(torch.float16)
+
+        return module
+    
+    def attn(self, attn:LlamaSdpaAttention):
+        new_attn = QLlamaAttention(attn.config, attn.layer_idx).cuda()
+        new_attn.load_state_dict(attn.state_dict(), strict=False)
+
+        new_attn = self.to_half(new_attn)
+        return new_attn
+
+    def mlp(self, mlp:LlamaMLP):
+        new_module = QLlamaMLP(config=mlp.config).to(self.model.device)
+        new_module = new_module.to(torch.float16)
+        new_module.load_state_dict(mlp.state_dict(), strict=False)
+
+        new_module = self.to_half(new_module)
+        return new_module
+
+    def convert(self):
+        modules = dict(self.model.named_modules(remove_duplicate=True))
+
+        for n, m in modules.items():
+            if isinstance(m, LlamaSdpaAttention):
+                parent_name, name = get_parent_name(n)
+                new_module = self.attn(m)
+                setattr(modules[parent_name], name, new_module)
+
+            elif isinstance(m, LlamaMLP):
+                parent_name, name = get_parent_name(n)
+                new_module = self.mlp(m)
+                setattr(modules[parent_name], name, new_module)
+
+        return self.model
+
     def reload(self, wqtype, xqtype):
         qmodel = self.convert()
         qmodel = self.assign_quantizer(qmodel, wqtype=wqtype, xqtype=xqtype)
         return qmodel
+    
+
+class RetNet4Compress(Vanilla4Compress):
+    def __init__(self, model: nn.Module, wbit: int = 8, abit: int = 8, state_dict: Dict = None) -> None:
+        super().__init__(model, wbit, abit, state_dict)
+        self.config = model.config
+        
+        self.embed_dim = self.config.decoder_embed_dim
+        self.ffn_dim = self.config.decoder_ffn_embed_dim
+
+    def attn(self, attn:MultiScaleRetention):
+        new_attn = QMultiScaleRetention(attn.config).to(self.model.device)
+        new_attn.load_state_dict(attn.state_dict(), strict=False)
+
+        return new_attn
+    
+    def ffn(self, mlp:GLU):
+        new_mlp = GLU(
+            self.embed_dim,
+            self.ffn_dim,
+            self.config.activation_fn,
+            self.config.dropout,
+            self.config.activation_dropout,
+        ).to(self.model.device)
+
+        new_mlp.load_state_dict(mlp.state_dict(), strict=False)
+        return new_mlp
+    
+    def convert(self):
+        modules = dict(self.model.named_modules(remove_duplicate=True))
+
+        for n, m in modules.items():
+            if isinstance(m, MultiScaleRetention):
+                parent_name, name = get_parent_name(n)
+                new_module = self.attn(m)
+                setattr(modules[parent_name], name, new_module)
+
+            elif isinstance(m, GLU):
+                parent_name, name = get_parent_name(n)
+                new_module = self.ffn(m)
+                setattr(modules[parent_name], name, new_module)
+
+        return self.model

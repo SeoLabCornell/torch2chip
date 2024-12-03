@@ -1,0 +1,34 @@
+model:
+  model_type: "vit_small_patch16_224"
+
+dataset:
+  name: "ImageNet-1K"
+  path: "/share/seo/imagenet/"
+  split: "train"
+  train_dir: "/share/seo/imagenet/train/"
+  test_dir: "/share/seo/imagenet/val/"
+  samples: 500
+  num_workers: 16
+
+save:
+  run_dir: "save/imagenet1K/vit_small/lsq_adaround/w8a8/"
+  logger: "inference.log"
+
+quantization:
+  wbit: 8
+  abit: 8
+  wqtype: adaround
+  xqtype: lsq
+  requires_grad: True
+
+train:
+  lr: 0.0001
+  epochs: 1
+  weight_decay: 1e-4
+  batch_size: 128
+  loss_type: "mse"
+  optim_type: adam
+
+t2c:
+  swl: 32
+  sfl: 26

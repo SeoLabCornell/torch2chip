@@ -5,6 +5,7 @@ Calibrator of post-training quantization (PTQ)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 from typing import Any, Union
 from torch.nn.modules import Module
@@ -22,7 +23,7 @@ from src.quantization.smoothquant import SmoothQuantChannelWiseWeightQuantizer, 
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 from src.quantization.mxint import MXChannelWiseWeightQuantizer
 
-from timm.layers.mlp import Mlp
+from timm.models.layers.mlp import Mlp
 from transformers.models.bert.modeling_bert import BertSelfOutput
 
 weight_quantizer = {
@@ -69,47 +70,55 @@ class PTQ(object):
     """
     def __init__(self, 
             model: nn.Module, 
-            loss_type: str, 
             trainloader, 
-            validloader, 
-            args, 
+            testloader, 
+            config, 
             logger
         ):
                 
         # model architecture
         self.model = model
 
-        # args
-        self.args = args
+        # config
+        self.config = config
 
         # qtypes
-        self.wqtype = self.args.wqtype
-        self.xqtype = self.args.xqtype
+        self.wqtype = self.config["quantization"]["wqtype"]
+        self.xqtype = self.config["quantization"]["xqtype"]
+        self.wbit = self.config["quantization"]["wbit"]
+        self.abit = self.config["quantization"]["abit"]
+
+        # learning
+        self.lr = self.config["train"]["lr"]
+        self.batch_size = self.config["train"]["batch_size"]
+        self.epochs = self.config["train"]["epochs"]
+        self.optim_type = self.config["train"]["optim_type"]
+        self.weight_decay = float(self.config["train"]["weight_decay"])
 
         # loader
         self.trainloader = trainloader
-        self.validloader = validloader
-
-        # max iterations
-        self.epochs = self.args.epochs
+        self.testloader = testloader
 
         # logger
         self.logger = logger
         self.logger_dict = {}
 
         # trainer
-        self.layer_train = self.args.layer_trainer
+        self.requires_grad = self.config["quantization"]["requires_grad"]
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
         # loss func
-        if loss_type == "mse":
-            self.criterion = torch.nn.MSELoss().cuda()
-        elif loss_type == "cross_entropy":
-            self.criterion = torch.nn.CrossEntropyLoss().cuda()
+        if config["train"]["loss_type"] == "mse":
+            self.criterion = torch.nn.MSELoss().to(self.device)
+        elif config["train"]["loss_type"] == "cross_entropy":
+            self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
         else:
             raise NotImplementedError("Unknown loss type")
         
         # cuda
-        self.model = self.model.cuda()
+        self.model = self.model.to(self.device)
+        
+        # steps
         self.steps = len(self.trainloader)
 
     def freeze(self, layer:Union[nn.Conv2d, nn.Linear]):
@@ -134,11 +143,11 @@ class PTQ(object):
         
         pbar = tqdm(self.trainloader, desc="Fetch Data")
         for idx, (inputs, target) in enumerate(pbar):
-            inputs = inputs.cuda()
-            
+            inputs = inputs.to(self.device)
+    
             x, y = self.fetch_layer_data(layer, inputs)
             cached_data.append((x, y))
-        
+
         return cached_data    
 
     def layer_trainer(self, layer:Union[_QBaseConv2d, _QBaseLinear], cached_data):
@@ -155,34 +164,34 @@ class PTQ(object):
         qparams = []
 
         if self.wqtype == "adaround":
-            layer.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=weight, train_flag=True).cuda()
+            layer.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=weight, train_flag=True).to(self.device)
         else:
-            layer.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-        
+            layer.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+
         qparams += [
-            {'params':layer.wq.parameters(), 'lr': self.args.lr, 'weight_decay': 0.0}, 
+            {'params':layer.wq.parameters(), 'lr': self.lr, 'weight_decay': 0.0}, 
         ]
 
         if isinstance(layer, _QBaseConv2d):
             if layer.in_channels != 3:
-                layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True).cuda()
+                layer.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True).to(self.device)
         else:
-            layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True).cuda()
+            layer.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True).to(self.device)
         
         qparams += [
-            {'params':layer.aq.parameters(), 'lr': self.args.lr, 'weight_decay': 0.0}, 
+            {'params':layer.aq.parameters(), 'lr': self.lr, 'weight_decay': 0.0}, 
         ]
 
-        if self.args.optimizer == "adam":
-            optimizer = torch.optim.Adam(qparams)
-        elif self.args.optimizer == "sgd":
-            optimizer = torch.optim.SGD(qparams)
+        if self.optim_type == "adam":
+            optimizer = torch.optim.Adam(qparams, lr=self.lr)
+        elif self.optim_type == "sgd":
+            optimizer = torch.optim.SGD(qparams, lr=self.lr)
         
         sz = len(cached_data)
-        id = torch.randint(0, sz, (self.args.batch_size,))
+        id = torch.randint(0, sz, (self.batch_size,))
         
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(self.epochs * len(cached_data)), eta_min=0.)
-        pbar = tqdm(range(self.epochs), desc=f"Epoch | {self.args.optimizer}")
+        pbar = tqdm(range(self.epochs), desc=f"Epoch | {self.optim_type}")
         for i in pbar:
             calib_loss = AverageMeter()
             for idx, batch in enumerate(cached_data):      
@@ -190,8 +199,8 @@ class PTQ(object):
                 x, y = cached_data[id[idx]]
 
                 # cuda
-                x = x.cuda()
-                y = y.cuda()
+                x = x.to(self.device)
+                y = y.to(self.device)
 
                 out = layer(x)
 
@@ -212,13 +221,13 @@ class PTQ(object):
     
     def layer_calibrator(self, layer:Union[_QBaseConv2d, _QBaseLinear], cached_data):
         self.freeze(layer)
-        layer.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True, unsigned=False).cuda()
+        layer.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(self.device)
 
         if isinstance(layer, _QBaseConv2d):
             if layer.in_channels != 3:
-                layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=True).cuda()
+                layer.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=True).to(self.device)
         else:
-            layer.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=True).cuda()
+            layer.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=True).to(self.device)
 
         calib_loss = AverageMeter()
         loss_fn = nn.MSELoss()
@@ -227,8 +236,8 @@ class PTQ(object):
             x, y = batch
 
             # cuda
-            x = x.cuda()
-            y = y.cuda()
+            x = x.to(self.device)
+            y = y.to(self.device)
 
             out = layer(x)
             err = loss_fn(out, y)
@@ -256,36 +265,51 @@ class PTQ(object):
         losses = AverageMeter()
         top1 = AverageMeter()
         top5 = AverageMeter()
+        latency = []
         
         self.model.eval()
         
         with torch.no_grad():
-            for idx, (inputs, target) in enumerate(tqdm(self.validloader)):
-                inputs = inputs.cuda()
+            for idx, (inputs, target) in enumerate(tqdm(self.testloader)):
+                inputs = inputs.to(self.device)
                 target = target.cuda(non_blocking=True)
-                
+
+                # latency timer
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+
+                start.record()
                 out, loss = self.valid_step(inputs, target)
+                end.record()
+                torch.cuda.synchronize()
+                lat = start.elapsed_time(end)
+
                 prec1, prec5 = accuracy(out.data, target, topk=(1, 5))
 
                 losses.update(loss.mean().item(), inputs.size(0))
                 top1.update(prec1.item(), inputs.size(0))
                 top5.update(prec5.item(), inputs.size(0))
+                latency.append(lat)
+                break
             
+        latency = np.array(latency)
+
         self.logger_dict["valid_loss"] = losses.avg
         self.logger_dict["valid_top1"] = top1.avg
         self.logger_dict["valid_top5"] = top5.avg
+        self.logger.info(f"Validation Completed: Average Latency = {latency.mean():.3f} ms")
 
     def fit(self):
         modules = dict(self.model.named_modules(remove_duplicate=False))
 
         for n, m in modules.items():
-            if isinstance(m, (_QBaseConv2d, _QBaseLinear)):
+            if isinstance(m, (_QBaseConv2d)):
                 # fetch data
                 cached_data = self.fetch_layer_data_all(m)
 
                 self.logger.info(f"Start Calibration of layer: {n}")
 
-                if self.layer_train:
+                if self.requires_grad:
                     new_layer, calib_err = self.layer_trainer(m, cached_data)
                 else:
                     new_layer, calib_err = self.layer_calibrator(m, cached_data)
@@ -296,8 +320,8 @@ class PTQ(object):
                 setattr(modules[parent_name], name, new_layer)
 
 class PTQViT(PTQ):
-    def __init__(self, model: Module, loss_type: str, trainloader, validloader, args, logger):
-        super().__init__(model, loss_type, trainloader, validloader, args, logger)
+    def __init__(self, model: Module, trainloader, testloader, config, logger):
+        super().__init__(model, trainloader, testloader, config, logger)
     
     def update_attn(self, layer:Union[QAttention, QWindowAttention], name=None):
         # low precision qkv
@@ -309,16 +333,16 @@ class PTQViT(PTQ):
 
         # low precision weights
         if self.wqtype == "adaround":
-            layer.qkv.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=qkvw, train_flag=True).cuda()
-            layer.proj.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=projw, train_flag=True).cuda()
+            layer.qkv.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=qkvw, train_flag=True).to(self.device)
+            layer.proj.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=projw, train_flag=True).to(self.device)
         else:
-            layer.qkv.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-            layer.proj.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
+            layer.qkv.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+            layer.proj.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
 
         # low precision quantizer
-        layer.xq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        layer.qqkv = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        layer.qproj = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
+        layer.xq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.qqkv = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.qproj = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
         
         return layer
 
@@ -332,14 +356,14 @@ class PTQViT(PTQ):
 
         # add quantizers
         if self.wqtype == "adaround":
-            layer.fc1.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=w1, train_flag=True).cuda()
-            layer.fc2.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=w2, train_flag=True).cuda()
+            layer.fc1.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=w1, train_flag=True).to(self.device)
+            layer.fc2.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=w2, train_flag=True).to(self.device)
         else:
-            layer.fc1.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-            layer.fc2.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
+            layer.fc1.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+            layer.fc2.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
 
-        layer.fc1.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        layer.fc2.aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
+        layer.fc1.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.fc2.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
 
         return layer
 
@@ -349,10 +373,10 @@ class PTQViT(PTQ):
         elif isinstance(layer, Mlp):
             qlayer = self.update_mlp(layer, name)
         
-        if self.args.optimizer == "adam":
-            optimizer = torch.optim.Adam(qlayer.parameters(), weight_decay=self.args.weight_decay)
-        elif self.args.optimizer == "sgd":
-            optimizer = torch.optim.SGD(qlayer.parameters(), weight_decay=self.args.weight_decay)
+        if self.optim_type == "adam":
+            optimizer = torch.optim.Adam(qlayer.parameters(), weight_decay=self.weight_decay)
+        elif self.optim_type == "sgd":
+            optimizer = torch.optim.SGD(qlayer.parameters(), weight_decay=self.weight_decay)
         
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=int(self.epochs * len(cached_data)), eta_min=0.)
 
@@ -365,8 +389,8 @@ class PTQViT(PTQ):
                 x, y = batch
 
                 # cuda
-                x = x.cuda()
-                y = y.cuda()
+                x = x.to(self.device)
+                y = y.to(self.device)
 
                 out = layer(x)
                 
@@ -395,8 +419,8 @@ class PTQViT(PTQ):
             x, y = batch
 
             # cuda
-            x = x.cuda()
-            y = y.cuda()
+            x = x.to(self.device)
+            y = y.to(self.device)
 
             out = qlayer(x)
             err = loss_fn(out, y)
@@ -414,7 +438,7 @@ class PTQViT(PTQ):
 
                 self.logger.info(f"Start Calibration of layer: {n}")
                 
-                if self.layer_train:
+                if self.requires_grad:
                     new_layer, calib_err = self.layer_trainer(m, n, cached_data)
                 else:
                     new_layer, calib_err = self.layer_calibrator(m, n, cached_data)
@@ -425,8 +449,8 @@ class PTQViT(PTQ):
                 setattr(modules[parent_name], name, new_layer)
 
 class PTQBERT(PTQ):
-    def __init__(self, model: Module, loss_type: str, trainloader, validloader, args, logger):
-        super().__init__(model, loss_type, trainloader, validloader, args, logger)
+    def __init__(self, model: Module, trainloader, testloader, config, logger):
+        super().__init__(model, trainloader, testloader, config, logger)
 
     def fetch_layer_data(self, layer:nn.Module, batch):
         hook = DataSaverHook(store_input=True, store_output=True)
@@ -465,19 +489,19 @@ class PTQBERT(PTQ):
 
         # low precision weights
         if self.wqtype == "adaround":
-            layer.query.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=qw, train_flag=True).cuda()
-            layer.key.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=kw, train_flag=True).cuda()
-            layer.value.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=vw, train_flag=True).cuda()
+            layer.query.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=qw, train_flag=True).to(self.device)
+            layer.key.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=kw, train_flag=True).to(self.device)
+            layer.value.wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=vw, train_flag=True).to(self.device)
         else:
-            layer.query.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-            layer.key.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-            layer.value.wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
+            layer.query.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+            layer.key.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+            layer.value.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
         
         # tensor quantizer
-        xq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        qquery = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        qkey = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
-        qvalue = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
+        xq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        qquery = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        qkey = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        qvalue = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
 
         setattr(layer, "xq", xq)
         setattr(layer, "qquery", qquery)
@@ -494,10 +518,10 @@ class PTQBERT(PTQ):
 
         # add quantizers
         if self.wqtype == "adaround":
-            wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, weights=weight, train_flag=True).cuda()
+            wq = weight_quantizer[self.wqtype](nbit=self.wbit, weights=weight, train_flag=True).to(self.device)
         else:
-            wq = weight_quantizer[self.wqtype](nbit=self.args.wbit, train_flag=True).cuda()
-        aq = input_quantizer[self.xqtype](nbit=self.args.abit, train_flag=True, unsigned=False).cuda()
+            wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
+        aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
         
         setattr(dense, "wq", wq)
         setattr(dense, "aq", aq)
