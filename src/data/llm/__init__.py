@@ -9,5 +9,6 @@ DATA_STAGE_MAP = {
     "winogrande": WinoGrande,
     "ARC-Challenge": ARCc,
     "ARC-Easy": ARCe,
-    "gsm8k": GSM8K
+    "gsm8k": GSM8K,
+    "mmlu": MMLU
 }

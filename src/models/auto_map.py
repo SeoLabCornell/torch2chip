@@ -26,6 +26,7 @@ MODEL_LIBRARY_MAP = {
     'meta-llama/Llama-3.2-1B-Instruct': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Llama-3.2-3B-Instruct': ('transformers', 'AutoModelForCausalLM'),
     'meta-llama/Llama-3.1-8B-Instruct': ('transformers', 'AutoModelForCausalLM'),
+    'meta-llama/Llama-3.1-8B': ('transformers', 'AutoModelForCausalLM'),
 }
 
 TORCH_WEIGHTS_MAP = {
