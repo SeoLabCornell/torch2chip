@@ -1,5 +1,5 @@
 model:
-  model_type: "meta-llama/Llama-3.1-8B-Instruct"
+  model_type: "meta-llama/Llama-3.1-8B"
 
 dataset:
   name: "wikitext"
@@ -7,7 +7,7 @@ dataset:
   split: "test"
 
 save:
-  run_dir: "save/llama3.2-3B_wikitext/"
+  run_dir: "save/llama3.2-8B_wikitext/"
   logger: "inference.log"
 
 eval:
@@ -18,3 +18,18 @@ quantization:
   wbit: 8
   abit: 8
   num_samples: 512
+  wqtype: smooth_quant
+  xqtype: smooth_quant_token
+
+train:
+  batch_size: 512
+
+smooth:
+  alpha: 0.85
+
+t2c:
+  swl: 32
+  sfl: 26
+
+export:
+  export_samples: 0

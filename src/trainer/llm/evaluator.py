@@ -1,9 +1,10 @@
 """
 Evaluator 
 """
+import os
 import re
 import torch
-import transformers
+import json
 
 from tqdm import tqdm
 from src.stage.base import Execute
@@ -176,7 +177,169 @@ class GSM8K(Execute):
             
             correctness = self.metric(dec_tok, gt)
             output.append(int(correctness))
+            
 
         avg = sum(output) / len(self.testset["dataset"])
         self.logger.info(f"Average Score (exact match) = {avg:.2f}")
+        return output
+
+def compute_metric(output_filename):
+    with open(output_filename, 'r') as f:
+        run_results = json.load(f)
+    total_acc = 0
+    total_num = 0
+    for task in run_results:
+        acc = 0
+        pred_answers = run_results[task]['pred_answers']
+        gold_answers = run_results[task]['gold_answers']
+        for pred, gold in zip(pred_answers, gold_answers):
+            if pred == gold: acc += 1
+        print("ACC-%s: %.4f" % (task, acc/len(gold_answers)))
+        total_acc += acc
+        total_num += len(gold_answers)
+    print("ACC-all: %.4f" % (total_acc/total_num))
+
+
+class MMLU(Execute):
+    def __init__(self, config_dir, model, tokenizer):
+        super().__init__(config_dir)
+
+        self.model = model
+        self.tokenizer = tokenizer
+
+        # condition for end of generation
+        self.max_gen_toks = self.config["eval"]["max_gen_toks"]
+
+        # dataset stage
+        data_name = self.config["dataset"]["name"]
+        self.datastage = DATA_STAGE_MAP[data_name](config_dir, self.tokenizer)
+
+        self.sub_task_list = [
+            'abstract_algebra',
+            'anatomy',
+            'astronomy',
+            'business_ethics',
+            'clinical_knowledge',
+            'college_biology',
+            'college_chemistry',
+            'college_computer_science',
+            'college_mathematics',
+            'college_medicine',
+            'college_physics',
+            'computer_security',
+            'conceptual_physics',
+            'econometrics',
+            'electrical_engineering',
+            'elementary_mathematics',
+            'formal_logic',
+            'global_facts',
+            'high_school_biology',
+            'high_school_chemistry',
+            'high_school_computer_science',
+            'high_school_european_history',
+            'high_school_geography',
+            'high_school_government_and_politics',
+            'high_school_macroeconomics',
+            'high_school_mathematics',
+            'high_school_microeconomics',
+            'high_school_physics',
+            'high_school_psychology',
+            'high_school_statistics',
+            'high_school_us_history',
+            'high_school_world_history',
+            'human_aging',
+            'human_sexuality',
+            'international_law',
+            'jurisprudence',
+            'logical_fallacies',
+            'machine_learning',
+            'management',
+            'marketing',
+            'medical_genetics',
+            'miscellaneous',
+            'moral_disputes',
+            'moral_scenarios',
+            'nutrition',
+            'philosophy',
+            'prehistory',
+            'professional_accounting',
+            'professional_law',
+            'professional_medicine',
+            'professional_psychology',
+            'public_relations',
+            'security_studies', 
+            'sociology',
+            'us_foreign_policy',
+            'virology',
+            'world_religions'
+        ]
+
+    def tokenize(self, prompt):
+        encoding = self.tokenizer.batch_encode_plus([prompt], return_tensors="pt", padding=True)
+        return encoding["input_ids"], encoding["attention_mask"]
+    
+    def generate(self, input_ids, attention_mask):
+        out = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=1, 
+            pad_token_id=self.tokenizer.pad_token_id,
+            do_sample=False,
+            temperature=1.0,
+            top_p=1.0
+        )
+
+        return out
+
+    def metric(self, model_pred, gt):
+        answers = model_pred[-1]
+        return answers == gt
+
+    def run(self):
+        output = []
+        self.model.eval()
+
+        acc_avg = []
+        run_results = {}
+
+        for task in self.sub_task_list:
+            self.logger.info(f"\nStart Evaluating Task: {task}")
+            testset = self.datastage.run(task)
+
+            pred, golden_output = [], []
+
+            pbar = tqdm(testset["dataset"])
+            for idx, sample in enumerate(pbar):
+                input_ids, attn_mask = self.tokenize(sample)
+
+                input_ids = input_ids.to(self.device)
+                attn_mask = attn_mask.to(self.device)
+
+                # label context
+                gt = testset["label"][idx]
+
+                # generate
+                tok = self.generate(input_ids, attn_mask)
+                dec_tok = self.tokenizer.batch_decode(tok, skip_special_tokens=True)
+
+                pred.append(dec_tok[0][-1])
+                golden_output.append(gt)
+
+                correctness = self.metric(dec_tok[0], gt)
+                output.append(int(correctness))
+
+                acc = sum(output) / len(output)
+                pbar.set_description(f"Accuracy: {acc:.4f}")
+
+                acc_avg.append(acc)
+
+            run_results[task] = {'pred_answers':pred, 'gold_answers':golden_output}
+
+        output_filename = os.path.join(self.run_dir, "accuracy.json")
+        
+        with open(output_filename, 'w') as f:
+            json.dump(run_results, f, ensure_ascii=False, indent=2)
+        
+        compute_metric(output_filename)
+
         return output

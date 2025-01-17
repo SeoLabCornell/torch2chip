@@ -11,3 +11,4 @@ tmp/
 *.out
 *.tar.gz
 .vscode/
+build/
