@@ -275,16 +275,7 @@ class MMLU(Execute):
         ]
 
     def tokenize(self, prompt):
-<<<<<<< HEAD
         encoding = self.tokenizer.batch_encode_plus([prompt], return_tensors="pt", padding=True)
-=======
-        encoding = self.tokenizer(
-            prompt,
-            return_tensors="pt", 
-            padding=True
-        )
-
->>>>>>> 43d08b10bead83d738b51c92e7758b0cb5d1fd05
         return encoding["input_ids"], encoding["attention_mask"]
     
     def generate(self, input_ids, attention_mask):
@@ -292,14 +283,10 @@ class MMLU(Execute):
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_new_tokens=1, 
-<<<<<<< HEAD
             pad_token_id=self.tokenizer.pad_token_id,
             do_sample=False,
             temperature=1.0,
             top_p=1.0
-=======
-            pad_token_id=self.tokenizer.pad_token_id
->>>>>>> 43d08b10bead83d738b51c92e7758b0cb5d1fd05
         )
 
         return out
