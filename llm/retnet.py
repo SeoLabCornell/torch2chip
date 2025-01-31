@@ -34,10 +34,12 @@ class CompressRetNet(Execute):
         converter = RetNet4Compress(model, wbit, abit)
         self.model = converter.convert()
 
+        # initialize logging
+        self.logger = self.initialize_logger()
+
         # define the target task
         self.task = SmoothQuantRetNet(config_dir, self.model, self.tokenizer, self.logger)
 
-    
     def prepare_tokenizer(self):
         tok_type = self.config["model"]["tokenizer"]
         tokenizer = AutoTokenizer.from_pretrained(tok_type, trust_remote_code=True)

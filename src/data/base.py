@@ -48,4 +48,4 @@ class DataStage(Execute):
         pass
 
     def run(self):
-        self.logger.info(f"Preparing dataset {self.dataset_name}")
+        print(f"Preparing dataset {self.dataset_name}")

@@ -20,7 +20,7 @@ from src.models.lm.retnet import MultiScaleRetention, GLU
 
 from timm.models.vision_transformer import Attention
 from timm.models.swin_transformer import WindowAttention
-from timm.models.layers.mlp import Mlp
+from timm.layers import Mlp
 from transformers.models.bert.modeling_bert import BertSelfAttention, BertSelfOutput
 
 from transformers.models.llama.modeling_llama import LlamaSdpaAttention, LlamaMLP

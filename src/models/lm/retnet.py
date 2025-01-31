@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from timm.models.layers import drop_path
+from timm.layers import drop_path
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.generation.utils import TopKLogitsWarper, TopPLogitsWarper

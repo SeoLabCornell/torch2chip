@@ -134,9 +134,6 @@ class _QBaseConv2d(nn.Conv2d):
         self.wq.inference()
         self.aq.inference()
 
-        # integer only weights copy
-        self.register_buffer("qweight", torch.ones_like(self.weight))
-
         # update ops
         self.ops = ConvOPS(self.stride, self.padding, self.dilation, groups=self.groups)
 
@@ -152,7 +149,7 @@ class _QBaseConv2d(nn.Conv2d):
         
         if self.initialize_qweight:
             wq = self.wq(self.weight)
-            self.qweight.copy_(wq.data.mul(self.mask))
+            self.weight.data = wq
             self.initialize_qweight = False
 
         y = self.ops(xq, self.qweight, self.bias)

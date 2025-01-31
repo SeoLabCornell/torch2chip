@@ -23,7 +23,7 @@ from src.quantization.smoothquant import SmoothQuantChannelWiseWeightQuantizer, 
 from src.quantization.minmax import MinMaxQuantizer, MinMaxTokenWiseQuantizer, MinMaxChannelWiseWeightQuantizer, MinMaxChannelWiseActQuantizer
 from src.quantization.mxint import MXChannelWiseWeightQuantizer
 
-from timm.models.layers.mlp import Mlp
+from timm.layers.mlp import Mlp
 from transformers.models.bert.modeling_bert import BertSelfOutput
 
 weight_quantizer = {

@@ -6,7 +6,7 @@ from src.module.base import _QBaseLinear, _QBase
 from src.module.fuse import MulQuant, LinearMulShift
 from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, BaseChannelWiseObserver
 
-from timm.models.layers.mlp import Mlp
+from timm.layers import Mlp
 
 class ViTFuser(object):
     def __init__(self, model: nn.Module):

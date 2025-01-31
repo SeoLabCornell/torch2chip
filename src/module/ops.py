@@ -40,7 +40,6 @@ class IntActWeight(nn.Module):
 
     def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
         x = x.to(torch.int8)
-
         z = t2c_gemm.bmw_int8(x, y, self.scale)
         return z.to(torch.float16)
 

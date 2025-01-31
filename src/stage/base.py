@@ -56,25 +56,26 @@ class Execute:
         logger = logging.getLogger(logname)
         logger.setLevel(logging.DEBUG)
 
-        file_handler = logging.FileHandler(logpath, mode="w")
-        console_handler = logging.StreamHandler()
-        
-        file_handler.setLevel(logging.DEBUG)
-        console_handler.setLevel(logging.INFO)
+        if not logger.handlers:
+            file_handler = logging.FileHandler(logpath, mode="w")
+            console_handler = logging.StreamHandler()
+            
+            file_handler.setLevel(logging.DEBUG)
+            console_handler.setLevel(logging.INFO)
 
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            console_handler.setFormatter(formatter)
 
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
+            logger.addHandler(file_handler)
+            logger.addHandler(console_handler)
 
         return logger
 
     def create_model(self):
         # mapper
         model_type = self.config["model"]["model_type"]
-        self.logger.info(f"Creating model {model_type}...")
+        print(f"Creating model {model_type}...")
 
         model_func = ModelMap(model_type)
         model = model_func.fetch()

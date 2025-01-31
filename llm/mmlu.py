@@ -22,6 +22,9 @@ class MMLUEval(Execute):
         self.model = self.create_model()
         self.tokenizer = self.prepare_tokenizer()
 
+        # initialize logging
+        self.logger = self.initialize_logger()
+
         self.task = MMLU(config_dir, self.model, self.tokenizer)
     
     def register_run_dir(self):

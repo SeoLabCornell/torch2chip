@@ -15,7 +15,7 @@ from src.module.ops import FloatMatMul, BatchIntMatMul, BatchHeadIntMatMul
 from src.module.fuse import MulShift
 from src.models.lm.retnet import MultiScaleRetention
 
-from timm.models.layers.weight_init import trunc_normal_
+from timm.layers import trunc_normal_
 from timm.models.swin_transformer import get_relative_position_index
 
 from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb, repeat_kv
