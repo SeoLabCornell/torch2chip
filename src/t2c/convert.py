@@ -23,7 +23,7 @@ from timm.models.swin_transformer import WindowAttention
 from timm.layers import Mlp
 from transformers.models.bert.modeling_bert import BertSelfAttention, BertSelfOutput
 
-from transformers.models.llama.modeling_llama import LlamaSdpaAttention, LlamaMLP
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaMLP
 
 
 from typing import Union, Dict
@@ -534,7 +534,7 @@ class Llama4Compress(Vanilla4Compress):
 
         return module
     
-    def attn(self, attn:LlamaSdpaAttention):
+    def attn(self, attn:LlamaAttention):
         new_attn = QLlamaAttention(attn.config, attn.layer_idx).cuda()
         new_attn.load_state_dict(attn.state_dict(), strict=False)
 
@@ -553,7 +553,7 @@ class Llama4Compress(Vanilla4Compress):
         modules = dict(self.model.named_modules(remove_duplicate=True))
 
         for n, m in modules.items():
-            if isinstance(m, LlamaSdpaAttention):
+            if isinstance(m, LlamaAttention):
                 parent_name, name = get_parent_name(n)
                 new_module = self.attn(m)
                 setattr(modules[parent_name], name, new_module)

@@ -570,10 +570,13 @@ class QLlamaAttention(LlamaAttention):
         super().__init__(config, layer_idx)
 
         # t2c base layer
-        self.q_proj = _QBaseLinear(self.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.k_proj = _QBaseLinear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.v_proj = _QBaseLinear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.o_proj = _QBaseLinear(self.num_heads * self.head_dim, self.hidden_size, bias=config.attention_bias).to(torch.float16)
+        self.q_proj = _QBaseLinear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.k_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.v_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
+        self.o_proj = _QBaseLinear(config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias).to(torch.float16)
+
+        self.num_heads = config.num_attention_heads
+        self.num_key_value_heads = config.num_key_value_heads
 
         # batch matmul
         self.qk = BatchHeadIntMatMul(nbit=8)
@@ -599,7 +602,7 @@ class QLlamaAttention(LlamaAttention):
         attn_weight += attn_bias
         attn_weight = torch.softmax(attn_weight, dim=-1)
         attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-        return attn_weight @ value
+        return attn_weight @ value, attn_weight
 
     # Adapted from LlamaAttention.forward
     def forward(
@@ -660,7 +663,7 @@ class QLlamaAttention(LlamaAttention):
             value_states = value_states.contiguous()
 
         # TODO: Quantizers
-        attn_output = self.manual_sdpa(
+        attn_output, attn_weight = self.manual_sdpa(
             query_states,
             key_states,
             value_states,
@@ -674,7 +677,7 @@ class QLlamaAttention(LlamaAttention):
 
         attn_output = self.o_proj(attn_output)
 
-        return attn_output, None, past_key_value
+        return attn_output, attn_weight
     
 class QMultiScaleRetention(MultiScaleRetention):
     def __init__(self, config: RetNetConfig, gate_fn="swish", use_bias=False, tensor_parallel=False):

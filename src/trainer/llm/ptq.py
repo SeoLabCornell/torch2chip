@@ -77,7 +77,7 @@ class LMPTQ(Execute):
         self.calib_set = self.tokenize(trainset)
         print(f"Length of Calibration Set = {len(self.calib_set)}")
 
-        self.metric = Perplexity(512, 512)
+        self.metric = Perplexity(self.datastage.batch_size, 512)
 
     def tokenize(self, trainset):
         """

@@ -17,12 +17,12 @@ eval:
 quantization:
   wbit: 8
   abit: 8
-  num_samples: 512
+  num_samples: 2048
   wqtype: smooth_quant
   xqtype: smooth_quant_token
 
 train:
-  batch_size: 512
+  batch_size: 2048
 
 smooth:
   alpha: 0.85

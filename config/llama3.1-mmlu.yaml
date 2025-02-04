@@ -3,9 +3,9 @@ model:
 
 dataset:
   name: "mmlu"
-  train: "/share/seo/llm_datasets/mmlu/data/"
-  test: "/share/seo/llm_datasets/mmlu/data/test/"
-  cot: "/share/seo/llm_datasets/mmlu/data/dev/"
+  train: "/scratch/dataset/mmlu/data/"
+  test: "/scratch/dataset/mmlu/data/test/"
+  cot: "/scratch/dataset/mmlu/data/dev/"
   nshot: 5
   split: "test"
 
