@@ -179,7 +179,7 @@ def main():
     if args.evaluate:
         # pre-trained baseline
         trainer.valid_epoch()
-        logger.info("[Pre-trained Model]: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+        logger.info("[Pre-trained Model]: Test accuracy = {:.2f}".format(trainer.logger_dict["valid_top1"]))
 
         # t2c and model fuse
         t2c = T2C(model=model, swl=args.swl, sfl=args.sfl, args=args)
@@ -188,7 +188,7 @@ def main():
         # update model
         setattr(trainer, "model", qmodel.cuda())
         trainer.valid_epoch()
-        logger.info("[After fusing]: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+        logger.info("[After fusing]: Test accuracy = {:.2f}".format(trainer.logger_dict["valid_top1"]))
 
         # export the files
         t2c.export(testloader, path=args.save_path, export_samples=args.export_samples)

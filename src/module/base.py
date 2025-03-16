@@ -5,7 +5,7 @@ Basic Modules for Low precision and Sparsity
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from src.quantization.observer import BaseObserver
+from src.quantization.observer import BaseObserver, BaseChannelWiseObserver, BaseTokenWiseObserver
 from src.module.ops import IntActWeight
 
 class ConvOPS(nn.Module):
@@ -56,7 +56,7 @@ class _QBase(nn.Module):
 
     def register_qparams(self):
         # register quantization scaler and zero point
-        self.register_buffer("scale", torch.tensor(1.0))
+        self.register_parameter("scale", torch.nn.Parameter(torch.tensor(1.0), requires_grad=False))
         self.register_buffer("zero_point", torch.tensor(0.0))
 
     def q(self, x:torch.Tensor):
@@ -77,7 +77,7 @@ class _QBase(nn.Module):
         Evaluation path with integer-only operation only
         """
         return self.trainFunc(x)
-    
+
     def inference(self):
         """
         Training / Evaluation Enable flag
@@ -152,7 +152,7 @@ class _QBaseConv2d(nn.Conv2d):
             self.weight.data = wq
             self.initialize_qweight = False
 
-        y = self.ops(xq, self.qweight, self.bias)
+        y = self.ops(xq, self.weight, self.bias)
         return y
 
     def forward(self, x:torch.Tensor):
@@ -175,7 +175,15 @@ class _QBaseLinear(nn.Linear):
     wq (_QBase): Weight quantizer. 
     aq (_QBase): Activation quantizer.
     """
-    def __init__(self, in_features: int, out_features: int, bias: bool = True, wbit:int=32, abit:int=32, train_flag=True):
+    def __init__(self, 
+                in_features: int, 
+                out_features: int, 
+                bias: bool = True, 
+                wbit:int=32, 
+                abit:int=32, 
+                train_flag=True, 
+                rescale_out:bool=False
+        ):
         super(_QBaseLinear, self).__init__(in_features, out_features, bias)
         self.train_flag = train_flag
 
@@ -190,37 +198,54 @@ class _QBaseLinear(nn.Linear):
         # masks
         self.register_buffer("mask", torch.ones_like(self.weight))
         self.initialize_qweight = True
+
+        # rescale the output
+        self.rescale_out = rescale_out
     
     def inference(self):
         r"""
         Inference mode
         """
         self.train_flag = False
+        self.weight.requires_grad_(False)
         self.wq.inference()
         self.aq.inference()
-        self.weight.requires_grad_(False)
-
-        self.register_buffer("qweight", torch.ones_like(self.weight, dtype=torch.int8))
         self.ops = IntActWeight(nbit=8)
+
+    def fetch_yscale(self):
+        scale_x = self.aq.scale
+        scale_w = self.wq.scale
+
+        if isinstance(self.wq.observer, BaseChannelWiseObserver):
+            scale_w = scale_w.permute(1,0)
+
+        if isinstance(self.aq.observer, BaseTokenWiseObserver):
+            scale_w = scale_w.unsqueeze(0)
+
+        return scale_x.to(torch.float32), scale_w.to(torch.float32)
 
     def trainFunc(self, x:torch.Tensor):
         wq = self.wq(self.weight)
-        xq = self.aq(x)
+        x = self.aq(x)
 
-        y = F.linear(xq, wq, self.bias)
+        y = F.linear(x, wq, self.bias)
         return y
 
     @torch.no_grad
     def evalFunc(self, x:torch.Tensor):
-        wq = self.wq(self.weight)
-        xq = x.div(self.aq.scale).round().clamp(-128, 127)
+        x = self.aq(x)
 
         if self.initialize_qweight:
-            wq = self.wq(self.weight).to(torch.int8)
+            wq = self.wq(self.weight)
             self.weight.data = wq
             self.initialize_qweight = False
 
-        y = self.ops(xq, self.weight)
+        y = self.ops(x, self.weight)
+        
+        if self.rescale_out:
+            scale_x, scale_w = self.fetch_yscale()
+            y = y.mul(scale_x).mul(scale_w)
+
         return y
 
     def forward(self, x:torch.Tensor):
@@ -229,8 +254,8 @@ class _QBaseLinear(nn.Linear):
         else:
             y = self.evalFunc(x)
 
-        out = self.yq(y)
-        return out
+        y = self.yq(y)
+        return y
 
 def round_ste(x:torch.Tensor):
     """

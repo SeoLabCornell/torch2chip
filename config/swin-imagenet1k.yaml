@@ -1,0 +1,36 @@
+model:
+  model_type: "swin_tiny_patch4_window7_224"
+
+dataset:
+  name: "ImageNet-1K"
+  path: "/scratch/dataset/imagenet-1k/"
+  split: "train"
+  train_dir: "/scratch/dataset/imagenet-1k/train/"
+  test_dir: "/scratch/dataset/imagenet-1k/val/"
+  samples: 500
+  num_workers: 16
+  mean: [0.5, 0.5, 0.5]
+  std: [0.5, 0.5, 0.5]
+
+save:
+  run_dir: "save/imagenet1K/swin_tiny_patch4_window7_224/lsq_adaround/w8a8/"
+  logger: "inference.log"
+
+quantization:
+  wbit: 8
+  abit: 8
+  wqtype: adaround
+  xqtype: lsq_token
+  requires_grad: True
+
+train:
+  lr: 0.0001
+  epochs: 1
+  weight_decay: 1e-4
+  batch_size: 128
+  loss_type: "mse"
+  optim_type: adam
+
+t2c:
+  swl: 32
+  sfl: 26

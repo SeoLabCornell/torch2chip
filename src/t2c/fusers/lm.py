@@ -1,18 +1,19 @@
 """
 Fuse language model
 """
-from typing import Optional
 from src.t2c.convert import get_parent_name
 from src.module.base import _QBaseLinear, _QBase
 from src.quantization.observer import BaseChannelWiseObserver, BaseTokenWiseObserver
-from src.module.fuse import MulShift
+from src.module.fuse import Add
 
 class LMFuser(object):
     """
     Fuser of language model with the isolated matrix multiplication. 
     """
-    def __init__(self, fake_quant_model):
+    def __init__(self, fake_quant_model, rescale_out:bool=False):
         self.model = fake_quant_model
+        self.device = self.model.device
+        self.rescale_out = rescale_out
 
     def inference(self):
         """
@@ -20,11 +21,10 @@ class LMFuser(object):
         """
         pass
 
-    def quantizer_fuse(self, wq: _QBase, aq: _QBase, yq: Optional[_QBase]=None):
-        scale_x = getattr(aq, "scale")
-        scale_w = getattr(wq, "scale")
-
-        if isinstance(aq.observer, BaseTokenWiseObserver):
+    def quantizer_fuse(self, xq:_QBase, wq:_QBase):
+        scale_x = xq.scale
+        scale_w = wq.scale
+        if isinstance(xq.observer, BaseTokenWiseObserver):
             if isinstance(wq.observer, BaseChannelWiseObserver):
                 scale_w = scale_w.unsqueeze(0)
                 sw = scale_x @ scale_w.transpose(1,2)
@@ -38,20 +38,18 @@ class LMFuser(object):
         return sw
 
     def fuse_linear(self, layer:_QBaseLinear):
-        hasbias = layer.bias is not None
-        scaler = MulShift()
-        
         # switch to inference mode
         layer.inference()
-        
-        sw = self.quantizer_fuse(layer.wq, layer.aq)
 
-        # fused scaling factors
-        if hasbias:
-            bias = getattr(layer, "bias")
+        # NOTE: Make sure the performance is not affected by the infinitesimal scales 
+        scaler = Add()
+        bias = getattr(layer, "bias")
+
+        if bias is not None:
             scaler.bias.data = bias
 
-        layer.ops.scale.data = sw
+        setattr(layer, "yq", scaler)
+        setattr(layer, "rescale_out", self.rescale_out)
         return layer
 
     def fuse(self):
@@ -61,10 +59,11 @@ class LMFuser(object):
             if isinstance(m, _QBaseLinear):
                 parent_name, name = get_parent_name(n)
                 new_layer = self.fuse_linear(m)
+                new_layer = new_layer.to(self.device)
                 setattr(modules[parent_name], name, new_layer)
 
         return self.model
 
 class LlamaFuser(LMFuser):
-    def __init__(self, fake_quant_model):
-        super().__init__(fake_quant_model)
+    def __init__(self, fake_quant_model, rescale_out:bool=False):
+        super().__init__(fake_quant_model, rescale_out)

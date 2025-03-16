@@ -3,8 +3,6 @@ Base dataset configuration
 """
 
 import torch
-import transformers
-import datasets
 
 from src.stage.base import Execute
 

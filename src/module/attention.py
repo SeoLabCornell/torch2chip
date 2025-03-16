@@ -50,33 +50,20 @@ class QAttention(nn.Module):
         self.proj = _QBaseLinear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        self.qkv_scale = MulShift()
-        self.qkv_deq = MulShift()
-
         self.attn_scale = MulShift()
         self.attn_scale.scale.data.copy_(self.scale)
-
-        # quantizers 
-        self.xq = _QBase(nbit=8)
-        self.qqkv = _QBase(nbit=8)
-        self.qproj = _QBase(nbit=8)
 
         # training flag
         self.train_flag = True
 
+    def inference(self):
+        self.train_flag = False
+        self.qkv.inference()
+        self.proj.inference()
+
         # matmul operator
         self.qk = BatchHeadIntMatMul(nbit=8)
         self.attnv = FloatMatMul(nbit=8)
-    
-    def inference(self):
-        self.train_flag = False
-        
-        self.qqkv.inference()
-        self.qkv.wq.inference()
-        self.xq.inference()
-        self.qkv.inference()
-        self.qproj.inference()
-        self.proj.inference()
 
     def trainFunc(self, q, k, v):
         attn = q @ k.transpose(-2, -1)  # out dim = token x token
@@ -86,34 +73,24 @@ class QAttention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = attn @ v                    # out dim = token x head_dim
-        x = self.qproj(x)
         return x
     
     def evalFunc(self, q, k, v):
-        # q, k, v = q.to(torch.int8), k.to(torch.int8), v.to(torch.int8)
         attn = self.qk(q, k)
         attn = self.attn_scale(attn)
 
         attn = F.softmax(attn, dim=-1)
-        attn = attn.mul(255.).round()
 
         attn = self.attn_drop(attn)
-
         x = self.attnv(attn, v)
-        x = self.qproj(x)
+        return x.to(q.dtype)
 
-        return x.to(torch.float32)
-    
     def forward(self, x:torch.Tensor):
         B, N, C = x.shape
-
-        x = self.xq(x)
         qkv = self.qkv(x)
-        qkv = self.qqkv(qkv)
 
         # reshape
         qkv = qkv.reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)  # reshape to (qkv), batch, num_heads, token, head_dim
-        
         q, k, v = qkv.unbind(0)         # batch, num_heads, token, head_dim
         q, k = self.q_norm(q), self.k_norm(k)
 
@@ -124,7 +101,6 @@ class QAttention(nn.Module):
 
         x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x = self.qkv_deq(x)
         x = self.proj_drop(x)
         return x
 
@@ -180,11 +156,6 @@ class QWindowAttention(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        # quantizers
-        self.xq = _QBase(nbit=32)
-        self.qqkv = _QBase(nbit=32)
-        self.qproj = _QBase(nbit=32)
-
         # training flag
         self.train_flag = True
 
@@ -195,17 +166,12 @@ class QWindowAttention(nn.Module):
 
     def inference(self):
         self.train_flag = False
-        
-        self.qqkv.inference()
-        self.qkv.wq.inference()
-        self.xq.inference()
         self.qkv.inference()
-        self.qproj.inference()
         self.proj.inference()
 
         # matmul operator
-        self.qk = BatchIntMatMul(nbit=32)
-        self.attnv = BatchIntMatMul(nbit=32)
+        self.qk = BatchHeadIntMatMul(nbit=32)
+        self.attnv = FloatMatMul(nbit=8)
 
     def _get_rel_pos_bias(self) -> torch.Tensor:
         relative_position_bias = self.relative_position_bias_table[
@@ -227,13 +193,11 @@ class QWindowAttention(nn.Module):
         attn = self.attn_drop(attn)
         x = attn @ v
         x = x.transpose(1, 2).reshape(B, N, -1)
-        x = self.qproj(x)
         return x
 
-    def evalFunc(self, q, k, v, B:int, N:int, mask: torch.Tensor = None):
-        q, k, v = q.double(), k.double(), v.double()
-        attn = self.qk(q, k.transpose(-2, -1))
-        
+    def evalFunc(self, q:torch.Tensor, k:torch.Tensor, v:torch.Tensor, B:int, N:int, mask: torch.Tensor = None):
+        attn = self.qk(q, k)
+
         # pos_bias is fused into the scaler
         attn = self.attn_scale(attn)
         attn = attn + self._get_rel_pos_bias()
@@ -244,14 +208,11 @@ class QWindowAttention(nn.Module):
             attn = attn.view(-1, self.num_heads, N, N)
         
         attn = self.softmax(attn)
-        attn = attn.mul(255.).round()
-
         attn = self.attn_drop(attn)
 
         x = self.attnv(attn, v)
         x = x.transpose(1, 2).reshape(B, N, -1)
-        x = self.qproj(x)
-        return x.float()
+        return x.to(q.dtype)
     
     def forward(self, x, mask: torch.Tensor = None):
         """
@@ -260,10 +221,7 @@ class QWindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
-        
-        x = self.xq(x)
         qkv = self.qkv(x)
-        qkv = self.qqkv(qkv)
         
         # reshape
         qkv = qkv.reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
@@ -275,7 +233,6 @@ class QWindowAttention(nn.Module):
             x = self.evalFunc(q, k, v, B_, N, mask)
 
         x = self.proj(x)
-        x = self.qkv_deq(x)
         x = self.proj_drop(x)
         return x
 
@@ -566,21 +523,21 @@ class QLlamaAttention(LlamaAttention):
     Llama Attention with Low precision operations
     """
 
-    def __init__(self, config: LlamaConfig, layer_idx: int, dtype=torch.float16):
+    def __init__(self, config: LlamaConfig, layer_idx: int, dtype=torch.float16, rescale_out:bool=False):
         super().__init__(config, layer_idx)
 
         # t2c base layer
-        self.q_proj = _QBaseLinear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.k_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.v_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias).to(torch.float16)
-        self.o_proj = _QBaseLinear(config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias).to(torch.float16)
+        self.q_proj = _QBaseLinear(config.hidden_size, config.num_attention_heads * self.head_dim, bias=config.attention_bias, rescale_out=rescale_out).to(torch.float16)
+        self.k_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias, rescale_out=rescale_out).to(torch.float16)
+        self.v_proj = _QBaseLinear(config.hidden_size, config.num_key_value_heads * self.head_dim, bias=config.attention_bias, rescale_out=rescale_out).to(torch.float16)
+        self.o_proj = _QBaseLinear(config.num_attention_heads * self.head_dim, config.hidden_size, bias=config.attention_bias, rescale_out=rescale_out).to(torch.float16)
 
         self.num_heads = config.num_attention_heads
         self.num_key_value_heads = config.num_key_value_heads
 
         # batch matmul
         self.qk = BatchHeadIntMatMul(nbit=8)
-    
+
     def manual_sdpa(self, query:torch.Tensor, key:torch.Tensor, value:torch.Tensor, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
         L, S = query.size(-2), key.size(-2)
         scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale

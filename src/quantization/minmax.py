@@ -58,7 +58,7 @@ class MinMaxChannelWiseActObserver(BaseChannelWiseObserver):
     
     def calculate_qparam(self, x):
         scale, zero_point = super().calculate_qparam(x)
-        
+
         if len(x.shape) == 4:
             scale = scale.unsqueeze(0).unsqueeze(3)
             zero_point = zero_point.unsqueeze(0).unsqueeze(3)
@@ -79,16 +79,16 @@ class MinMaxQuantizer(_QBase):
         if self.train_flag:
             delta, zero_point = self.observer(x)
 
-            self.scale.data = 1 / delta
+            self.scale.data = delta
             self.zero_point.data = zero_point
         
-        xr = round_ste(x * self.scale) + self.zero_point
+        xr = round_ste(x / self.scale) + self.zero_point
         xq = torch.clamp(xr, min=self.qlb, max=self.qub)
         xdq = xq.sub(self.zero_point)
 
         # dequantize
         if self.dequantize:
-            xdq = xdq.div(self.scale)
+            xdq = xdq.mul(self.scale)
         
         return xdq
     

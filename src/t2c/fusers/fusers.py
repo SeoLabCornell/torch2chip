@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 from src.module.base import _QBase
 from typing import List, Union
-from src.module.fuse import QConvReLU, QConvBNReLU, _QBaseConv2d, _QBaseLinear, MulShift
-from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, BaseChannelWiseObserver
+from src.module.fuse import QConvReLU, QConvBNReLU, _QBaseConv2d, _QBaseLinear, MulShift, MulQuant
+from src.quantization.observer import BaseChannelWiseObserver
 
 
 class LayerFuser(object):

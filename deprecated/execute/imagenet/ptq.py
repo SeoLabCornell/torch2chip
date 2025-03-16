@@ -1,37 +1,26 @@
 """
-Reload your t2c model
+DNN (Sparse) Post Training Quantiztion on ImageNet-1K dataset
 """
 
-import os
 import sys
-import torch
+sys.path.append("../torch2chip/")
+import os
 import logging
 import argparse
 
-sys.path.append("../torch2chip/")
-
-from src.module.attention import QAttention, QWindowAttention
-from src.module.base import _QBaseConv2d, _QBaseLinear
-from src.utils.utils import str2bool
+from src.utils.utils import str2bool, load_ddp_checkpoint, save_checkpoint
 from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
-from src.trainer.pruning import STrainer
-from src.t2c.t2c import T2C
-from src.trainer.vision.ptq import PTQ, PTQViT
-from src.t2c.convert import Vanilla4Compress, ViTV4C
+from src.trainer.vision.ptq import PTQ
+from src.t2c.convert import Vanilla4Compress
 from src.models.imagenet.mobilenetv1 import mobilenetv1
 
-from torchvision.models import resnet18, resnet34, resnet50, ResNet18_Weights, ResNet34_Weights, ResNet50_Weights
-from timm.models.vision_transformer import vit_tiny_patch16_224, vit_base_patch16_224, vit_small_patch16_224
-from timm.models.swin_transformer import swin_tiny_patch4_window7_224, swin_base_patch4_window7_224
+from torchvision.models import resnet18, resnet34, resnet50, mobilenet_v2, ResNet18_Weights, ResNet34_Weights, ResNet50_Weights, MobileNet_V2_Weights
 from torchvision.models import vgg16_bn, VGG16_BN_Weights
-from timm.layers.mlp import Mlp
 
 TRAINERS = {
     "base": Trainer,
-    "sparse": STrainer,
     "ptq": PTQ,
-    "qattn": PTQViT
 }
 
 parser = argparse.ArgumentParser(description='T2C Training')
@@ -52,7 +41,6 @@ parser.add_argument('--workers', type=int, default=16,help='number of data loadi
 
 # dataset
 parser.add_argument('--dataset', type=str, default='cifar10', help='dataset: CIFAR10 / ImageNet_1k')
-parser.add_argument('--data_path', type=str, default='./data/', help='data directory')
 parser.add_argument('--train_dir', type=str, default='./data/', help='training data directory')
 parser.add_argument('--val_dir', type=str, default='./data/', help='test/validation data directory')
 
@@ -73,27 +61,15 @@ parser.add_argument("--mixed_prec", type=str2bool, nargs='?', const=True, defaul
 # trainer
 parser.add_argument('--trainer', type=str, default='base', help='trainer type')
 
-# prune
-parser.add_argument('--pruner', type=str, default='element', help='trainer type')
-parser.add_argument('--prune_ratio', default=0.9, type=float, help='target prune ratio')
-parser.add_argument('--drate', default=0.5, type=float, help='additional pruning rate before regrow')
-parser.add_argument('--warmup', type=int, default=1, help='Number of epochs to train.')
-parser.add_argument('--prune_freq', type=int, default=1000, help='Iteration gap between sparsity update')
-parser.add_argument('--final_epoch', type=int, default=160, help='Final pruning epoch')
-
 # ptq
 parser.add_argument('--wbit', type=int, default=8, help="Weight Precision")
 parser.add_argument('--abit', type=int, default=8, help="Input Precision")
-parser.add_argument('--swl', type=int, default=32, help="Precision of scaling factor")
-parser.add_argument('--sfl', type=int, default=26, help="Fractional bits")
 parser.add_argument('--wqtype', type=str, default="adaround", help='Weight quantizer')
 parser.add_argument('--xqtype', type=str, default="lsq", help='Input quantizer')
 parser.add_argument('--num_samples', type=int, default=1024, help="Number of samples for calibration")
-parser.add_argument('--export_samples', type=int, default=10, help="Number of samples for export")
 parser.add_argument("--layer_trainer", type=str2bool, nargs='?', const=True, default=False, help="enable layer-wise training / calibration")
 
 args = parser.parse_args()
-
 
 def main():
     if not os.path.isdir(args.save_path):
@@ -111,82 +87,37 @@ def main():
     logger.root.setLevel(0)
     logger.info(args)
 
-    args.mixup_active = False
     trainloader, testloader, num_classes = get_ptq_dataloader(args)
 
     # model
     if args.model == "resnet18":
         model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        wrapper = Vanilla4Compress
-
+    
     elif args.model == "resnet34":
         model = resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
-        wrapper = Vanilla4Compress
     
     elif args.model == "resnet50":
         model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        wrapper = Vanilla4Compress
-
-    elif args.model == "mobilenetv1":
-        model = mobilenetv1()
-        wrapper = Vanilla4Compress
 
     elif args.model == "vgg16_bn":
         model = vgg16_bn(weights=VGG16_BN_Weights.IMAGENET1K_V1)
-        wrapper = Vanilla4Compress
 
-    elif args.model == "vit_tiny":
-        model = vit_tiny_patch16_224(pretrained=True)
-        wrapper = ViTV4C
-
-    elif args.model == "vit_small":
-        model = vit_small_patch16_224(pretrained=True)
-        wrapper = ViTV4C
-
-    elif args.model == "vit_base":
-        model = vit_base_patch16_224(pretrained=True)
-        wrapper = ViTV4C
-
-    elif args.model == "swin_tiny_patch4_window7_224":
-        model = swin_tiny_patch4_window7_224(pretrained=True)
-        wrapper = ViTV4C
+    elif args.model == "mobilenetv1":
+        model = mobilenetv1()
+        ckpt = load_ddp_checkpoint(ckpt=args.resume, state=model.state_dict())
+        model.load_state_dict(ckpt)
     
-    elif args.model == "swin_base_patch4_window7_224":
-        model = swin_base_patch4_window7_224(pretrained=True)
-        wrapper = ViTV4C
+    elif args.model == "mobilenetv2":
+        model = mobilenet_v2(weights=MobileNet_V2_Weights.IMAGENET1K_V1)
 
     else:
         raise NotImplementedError(f"Unknown model architecture: {args.model}")
-    
-    # load the state_dict
-    logger.info("=> loading checkpoint...")
-    ckpt = torch.load(args.resume)
-    
-    converter = wrapper(model, wbit=args.wbit, abit=args.abit, state_dict=ckpt)
+
+    # convert the model to the compression-ready model
+    converter = Vanilla4Compress(model, wbit=args.wbit, abit=args.abit)
     model = converter.convert()
+    logger.info(model)
 
-    # t2c and model fuse
-    t2c = T2C(model=model, swl=args.swl, sfl=args.sfl, args=args)
-    
-    model = t2c.fused_model()
-    model = converter.assign_quantizer(model, args.wqtype, xqtype=args.xqtype)
-    
-    # resume from the checkpoint
-    model.load_state_dict(ckpt)
-    logger.info(f"Loaded checkpoint from: {args.resume}")
-    
-    # Switch to inference mode
-    for n, m in model.named_modules():
-        if isinstance(m, (QAttention, QWindowAttention)):
-            m.inference()
-
-        elif isinstance(m, Mlp):
-            m.fc1.linear.inference()
-            m.fc2.linear.inference()
-
-        elif isinstance(m, (_QBaseConv2d, _QBaseLinear)):
-            m.inference()
-    
     # define the trainer
     trainer = TRAINERS[args.trainer](
         model=model,
@@ -194,13 +125,26 @@ def main():
         trainloader=trainloader,
         validloader=testloader,
         args=args,
-        logger=logger,
+        logger=logger
     )
 
     trainer.valid_epoch()
-    logger.info("[Pre-trained Model]: Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    logger.info("[Before PTQ] Test accuracy = {:.2f}".format(trainer.logger_dict["valid_top1"]))
 
-    
+    # start ptq
+    trainer.fit()
+
+    trainer.valid_epoch()
+    logger.info("[W{}A{}] Test accuracy = {:.2f}".format(args.wbit, args.abit, trainer.logger_dict["valid_top1"]))
+
+    state = {
+        'state_dict': trainer.model.state_dict(),
+        'acc': trainer.logger_dict["valid_top1"],
+    }
+
+    filename=f"checkpoint.pth.tar"
+    save_checkpoint(state, True, args.save_path, filename=filename)
+    logger.info("Model Saved")
 
 if __name__ == '__main__':
     main()

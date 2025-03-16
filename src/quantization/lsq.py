@@ -103,47 +103,39 @@ class LSQ(_QBase):
     def register_qparams(self):
         super().register_qparams()
         # register learnable parameter 
-        self.register_parameter("delta", torch.nn.Parameter(torch.tensor(1.0)))
+        self.scale.requires_grad_(True)
 
     def q(self, x:torch.Tensor):
         if not self.initialize:
             if self.train_flag:
                 with torch.no_grad():
-                    delta, zero_point = self.observer(x.detach())
-                    self.delta.data = delta
+                    scale, zero_point = self.observer(x.detach())
+                    self.scale.data = scale
                     self.zero_point.data = zero_point
                     self.initialize = True
 
         # quantize
         grad_factor = 1.0 / (x.numel() * self.observer.qub) ** 0.5
-        self.delta.data = grad_scale(self.delta, grad_factor)
-        
-        xr = round_ste(x / self.delta) + self.zero_point
+        self.scale.data = grad_scale(self.scale, grad_factor)
+
+        xr = round_ste(x / self.scale) + self.zero_point
         xr = torch.clamp(xr, min=self.qlb, max=self.qub)
-
-        # dequantize
-        xr = xr.sub(self.zero_point).mul(self.delta)
         return xr
-    
-    def trainFunc(self, input: torch.Tensor):
-        xdq = self.q(input)
 
-        # update the buffer
-        self.scale.data = 1 / self.delta.data
-        return xdq
-    
-    def evalFunc(self, input: torch.Tensor):
-        xr = round_ste(input * self.scale) + self.zero_point
-        xq = torch.clamp(xr, min=self.qlb, max=self.qub)
-        xdq = (xq - self.zero_point).clamp(self.qlb, self.qub)
+    def trainFunc(self, x: torch.Tensor):
+        xdq = self.q(x)
 
         if self.dequantize:
-            xdq = xdq.div(self.scale)
-
+            xdq = xdq.sub(self.zero_point).mul(self.scale)
         return xdq
     
+    def evalFunc(self, x: torch.Tensor):
+        x = round_ste(x / self.scale) + self.zero_point
+        x = torch.clamp(x, min=self.qlb, max=self.qub)
+        return x
+
     def extra_repr(self) -> str:
-        return super().extra_repr() + f", delta={self.delta.data.item():.2e}"
+        return super().extra_repr() + f", scale={self.scale.data.item():.2e}"
 
 
 class LSQTokenWise(LSQ):

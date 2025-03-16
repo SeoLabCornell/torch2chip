@@ -3,12 +3,14 @@ model:
 
 dataset:
   name: "ImageNet-1K"
-  path: "/share/seo/imagenet/"
+  path: "/scratch/dataset/imagenet-1k/"
   split: "train"
-  train_dir: "/share/seo/imagenet/train/"
-  test_dir: "/share/seo/imagenet/val/"
+  train_dir: "/scratch/dataset/imagenet-1k/train/"
+  test_dir: "/scratch/dataset/imagenet-1k/val/"
   samples: 500
   num_workers: 16
+  mean: [0.5, 0.5, 0.5]
+  std: [0.5, 0.5, 0.5]
 
 save:
   run_dir: "save/imagenet1K/vit_small/lsq_adaround/w8a8/"

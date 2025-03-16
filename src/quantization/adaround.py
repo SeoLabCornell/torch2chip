@@ -77,7 +77,7 @@ class AdaRound(_QBase):
         delta, zp = self.observer(x)
 
         self.delta.copy_(delta)
-        self.scale.copy_(1 / delta)
+        self.scale.copy_(delta)
         self.zero_point.copy_(zp)
 
         # find the optimal scaling factor first
@@ -93,7 +93,7 @@ class AdaRound(_QBase):
     
     def q(self, x:torch.Tensor):
         # quantization
-        xfloor = x.mul(self.scale).floor()
+        xfloor = x.div(self.scale).floor()
         soft_shift = self.h()
 
         # quantize
@@ -108,7 +108,7 @@ class AdaRound(_QBase):
 
         # dequantize
         if self.dequantize:
-            output = output.div(self.scale)
+            output = output.mul(self.scale)
         return output
     
     def trainFunc(self, input: torch.Tensor):

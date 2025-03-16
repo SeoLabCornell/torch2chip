@@ -29,6 +29,15 @@ class MulShift(nn.Module):
     def forward(self, x:torch.Tensor):
         out = x.mul(self.scale).add(self.bias)
         return out
+    
+class Add(nn.Module):
+    def __init__(self, dtype=torch.float32, out_type=torch.float16):
+        super().__init__()
+        self.register_buffer("bias", torch.tensor(0.0, dtype=dtype))
+        self.out_type = out_type
+
+    def forward(self, x:torch.Tensor):
+        return x.add(self.bias).to(self.out_type)
 
 class MulQuant(nn.Module):
     r"""Multiply the scaling factor and add the bias, then quantize the output.
@@ -41,6 +50,7 @@ class MulQuant(nn.Module):
     def __init__(self, nbit:int=8, unsigned=False):
         super(MulQuant, self).__init__()
         self.register_buffer("scale", torch.tensor(1.0))
+        self.register_buffer("scale_y", torch.tensor(1.0))
         self.register_buffer("bias", torch.tensor(0.0))
         self.register_buffer("zero_point", torch.tensor(0.0))
 
@@ -69,8 +79,7 @@ class MulQuant(nn.Module):
         # quant
         out = out.add(self.zero_point)
         out = out.clamp(min=self.qlb, max=self.qub).sub(self.zero_point)
-        
-        return out.clamp(min=self.qlb, max=self.qub)
+        return out.mul(self.scale_y)
 
 class QConvBNReLU(nn.Module):
     r"""

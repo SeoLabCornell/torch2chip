@@ -1,6 +1,7 @@
+seed: 5000
+
 model:
-  model_type: "Spiral-AI/Spiral-RetNet-3b-base"
-  tokenizer: "cyberagent/calm2-7b-chat"
+  model_type: "meta-llama/Llama-3.1-8B-Instruct"
 
 dataset:
   name: "wikitext"
@@ -8,7 +9,7 @@ dataset:
   split: "test"
 
 save:
-  run_dir: "save/retnet-3b-hf/"
+  run_dir: "save/Llama-3.1-8b-wikitext/"
   logger: "inference.log"
 
 eval:
@@ -16,14 +17,15 @@ eval:
   n_samples: 16
 
 quantization:
-  wbit: 4
+  wbit: 8
   abit: 8
-  num_samples: 512
-  wqtype: smooth_quant_mxint
+  num_samples: 2048
+  wqtype: smooth_quant
   xqtype: smooth_quant_token
+  rescale_out: True
 
 train:
-  batch_size: 512
+  batch_size: 2048
 
 smooth:
   alpha: 0.85

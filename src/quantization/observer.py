@@ -60,6 +60,10 @@ class BaseObserver(nn.Module):
         return scale, zero_point
     
     def forward(self, x:torch.Tensor):
+
+        if x.dtype != torch.float32:
+            x = x.to(torch.float32)
+
         self.get_bound(x)
         scale, zero_point = self.calculate_qparam(x)
         return scale, zero_point
@@ -116,25 +120,14 @@ class BaseTokenWiseObserver(BaseObserver):
         self.register_buffer("ub", torch.ones(1, self.num_tokens, 1).mul(float("inf")))
 
     def get_bound(self, x:torch.Tensor):
-        # x = x.view(self.num_tokens, -1)
-        x = x.reshape(self.num_tokens, -1)
-
+        x = x.reshape(x.size(1), -1)
 
         min_val = x.min(dim=1, keepdim=True)[0]
         max_val = x.max(dim=1, keepdim=True)[0]
 
-        if self.initialize:
-            self.lb.data = min_val.unsqueeze(0)
-            self.ub.data = max_val.unsqueeze(0)
-            
-            self.initialize = False
-        else:
-            lb = torch.min(self.lb, min_val)
-            ub = torch.max(self.ub, max_val)
+        self.lb.data = min_val.unsqueeze(0)
+        self.ub.data = max_val.unsqueeze(0)
 
-            # update bound
-            self.lb.copy_(lb)
-            self.ub.copy_(ub)
 
 def lp_loss(pred, target, p=2.0, reduction='none'):
     """

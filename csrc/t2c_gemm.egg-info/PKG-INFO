@@ -1,0 +1,7 @@
+Metadata-Version: 2.2
+Name: t2c_gemm
+Version: 0.1.0
+Summary: t2c_gemm: CUDA Extension of Torch2Chip
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown

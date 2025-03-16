@@ -1,3 +1,5 @@
+seed: 5000
+
 model:
   model_type: "meta-llama/Llama-2-7b-hf"
 
@@ -7,7 +9,7 @@ dataset:
   split: "test"
 
 save:
-  run_dir: "save/Llama-2-7b-hf/"
+  run_dir: "save/Llama-2-7b-hf-wikitext/"
   logger: "inference.log"
 
 eval:
@@ -20,6 +22,7 @@ quantization:
   num_samples: 2048
   wqtype: smooth_quant
   xqtype: smooth_quant_token
+  rescale_out: True
 
 train:
   batch_size: 2048

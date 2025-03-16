@@ -543,7 +543,7 @@ class Llama4Compress(Vanilla4Compress):
 
     def mlp(self, mlp:LlamaMLP):
         new_module = QLlamaMLP(config=mlp.config).to(self.model.device)
-        new_module = new_module.to(torch.float16)
+        # new_module = new_module.to(torch.float16)
         new_module.load_state_dict(mlp.state_dict(), strict=False)
 
         new_module = self.to_half(new_module)

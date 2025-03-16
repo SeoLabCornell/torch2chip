@@ -17,14 +17,17 @@ from src.t2c.convert import Llama4Compress
 from src.trainer.llm.evaluator import WikiText
 from src.t2c.t2c import T2C
 from src.utils.utils import gpufloat2cpuint
+from transformers import set_seed
 
-parser = argparse.ArgumentParser(description='Llama')
+parser = argparse.ArgumentParser(description='LLM model evaluation against the WikiText benchmark')
 parser.add_argument('--config_dir', type=str, default=None, help="Path to the configuration file (.yaml)")
 args = parser.parse_args()
 
 class CompressLlama(Execute):
     def __init__(self, config_dir):
         super().__init__(config_dir)
+        set_seed(self.config["seed"])
+        
         model = self.create_model()
         self.tokenizer = self.prepare_tokenizer()
 

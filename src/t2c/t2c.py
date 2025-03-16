@@ -31,7 +31,9 @@ FUSERS = {
     "mobilenetv1": MobileNetV1Fuser,
     "vgg16_bn": VGGFuser,
     "bert": BERTFuser,
+    "meta-llama/Llama-3.2-1B-Instruct": LlamaFuser,
     "meta-llama/Llama-3.2-3B-Instruct": LlamaFuser,
+    "meta-llama/Llama-3.1-8B-Instruct": LlamaFuser,
     "meta-llama/Llama-2-7b-hf": LlamaFuser
 }
 
@@ -47,9 +49,10 @@ class T2C(object):
         self.config = config
         self.model_type = config["model"]["model_type"]
         self.batch_size = config["train"]["batch_size"]
+        rescale_out = config["quantization"].get("rescale_out", False)
 
         # model fusion
-        fuser = FUSERS[self.model_type](model)
+        fuser = FUSERS[self.model_type](model, rescale_out=rescale_out)
 
         # switch to inference mode
         fuser.inference()

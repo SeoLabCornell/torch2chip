@@ -7,14 +7,14 @@ from src.models.lm.retnet import get_activation_fn
 from transformers.activations import ACT2FN
 
 class QLlamaMLP(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, rescale_out:bool=False):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = _QBaseLinear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
-        self.up_proj = _QBaseLinear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias)
-        self.down_proj = _QBaseLinear(self.intermediate_size, self.hidden_size, bias=config.mlp_bias)
+        self.gate_proj = _QBaseLinear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias, rescale_out=rescale_out)
+        self.up_proj = _QBaseLinear(self.hidden_size, self.intermediate_size, bias=config.mlp_bias, rescale_out=rescale_out)
+        self.down_proj = _QBaseLinear(self.intermediate_size, self.hidden_size, bias=config.mlp_bias, rescale_out=rescale_out)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x):
@@ -47,15 +47,16 @@ class QGLU(nn.Module):
         activation_fn,
         dropout,
         activation_dropout,
+        rescale_out:bool=False
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.activation_fn = get_activation_fn(activation=str(activation_fn))
         self.activation_dropout_module = torch.nn.Dropout(activation_dropout)
         self.dropout_module = torch.nn.Dropout(dropout)
-        self.fc1 = _QBaseLinear(self.embed_dim, ffn_dim, bias=False)
-        self.fc2 = _QBaseLinear(ffn_dim, self.embed_dim, bias=False)
-        self.gate = _QBaseLinear(self.embed_dim, ffn_dim, bias=False)
+        self.fc1 = _QBaseLinear(self.embed_dim, ffn_dim, bias=False, rescale_out=rescale_out)
+        self.fc2 = _QBaseLinear(ffn_dim, self.embed_dim, bias=False, rescale_out=rescale_out)
+        self.gate = _QBaseLinear(self.embed_dim, ffn_dim, bias=False, rescale_out=rescale_out)
 
     def reset_parameters(self):
         self.fc1.reset_parameters()

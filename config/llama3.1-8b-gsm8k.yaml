@@ -1,28 +1,29 @@
+seed: 5000
+
 model:
   model_type: "meta-llama/Llama-3.1-8B-Instruct"
 
 dataset:
-  name: "mmlu"
-  train: "/scratch/dataset/mmlu/data/"
-  test: "/scratch/dataset/mmlu/data/test/"
-  cot: "/scratch/dataset/mmlu/data/dev/"
-  nshot: 5
+  name: "gsm8k"
+  train: "/scratch/dataset/gsm8k/train.jsonl"
+  test: "/scratch/dataset/gsm8k/gsm8k_test.jsonl"
   split: "test"
 
 save:
-  run_dir: "save/llama3.1-8B_mmlu/"
+  run_dir: "save/llama3.1-8B-gsm8k/"
   logger: "inference.log"
 
 eval:
   cot: True
-  max_gen_toks: 256
+  max_gen_toks: 512
 
 quantization:
   wbit: 8
   abit: 8
-  num_samples: 512
+  num_samples: 2048
   wqtype: smooth_quant
   xqtype: smooth_quant_token
+  rescale_out: True
 
 train:
   batch_size: 512

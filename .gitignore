@@ -12,3 +12,4 @@ tmp/
 *.tar.gz
 .vscode/
 build/
+submodules/

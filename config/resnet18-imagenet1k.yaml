@@ -1,5 +1,5 @@
 model:
-  model_type: "resnet50"
+  model_type: "resnet18"
 
 dataset:
   name: "ImageNet-1K"
@@ -12,7 +12,7 @@ dataset:
   num_classes: 1000
 
 save:
-  run_dir: "save/imagenet1K/resnet50/sparse/w32a32_M8N1/"
+  run_dir: "save/imagenet1K/resnet18/w8a8/"
   logger: "training.log"
 
 quantization:

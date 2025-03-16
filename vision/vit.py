@@ -12,7 +12,7 @@ from src.trainer.vision.ptq import PTQViT
 from src.data.vision.imagenet import ImageNet1K
 from src.t2c.t2c import T2C
 
-parser = argparse.ArgumentParser(description='Llama')
+parser = argparse.ArgumentParser(description='Compress Vision Transformers')
 parser.add_argument('--config_dir', type=str, default=None, help="Path to the configuration file (.yaml)")
 args = parser.parse_args()
 
@@ -74,7 +74,7 @@ class CompressViT(Execute):
         setattr(self.trainer, "model", fused_model.to(self.device))
 
         self.trainer.valid_epoch()
-        self.logger.info("[After fusing]: Test accuracy = {:.3f}".format(self.trainer.logger_dict["valid_top1"]))
+        self.logger.info("[After fusing]: Test accuracy = {:.2f}".format(self.trainer.logger_dict["valid_top1"]))
 
         fused_model = getattr(self.trainer, "model")
         self.print_arch(fused_model, "fused_model")

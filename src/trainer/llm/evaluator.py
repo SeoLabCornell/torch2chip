@@ -48,7 +48,6 @@ class WikiText(Execute):
             with torch.no_grad():
                 logits = self.model(batch).logits
 
-            
             shift_logits = logits[:, :-1, :].contiguous().float()
             shift_labels = self.testset[:, (i * 2048) : ((i + 1) * 2048)][:, 1:]
 
@@ -104,7 +103,7 @@ class GSM8K(Execute):
         stop_criteria = stop_sequences_criteria(
                 self.tokenizer, self.gen_until, input_ids.shape[1], input_ids.shape[0]
         )
-
+        
         out = self.model.generate(
             input_ids=input_ids,
             max_length=max_length,
@@ -112,7 +111,7 @@ class GSM8K(Execute):
             pad_token_id=self.tokenizer.pad_token_id,
             use_cache=True,
             attention_mask=attention_mask,
-            do_sample=False
+            do_sample=True
         )
 
         return out
@@ -156,7 +155,8 @@ class GSM8K(Execute):
         output = []
         self.model.eval()
 
-        for idx, sample in enumerate(tqdm(self.testset["dataset"])):
+        pbar = tqdm(self.testset["dataset"])
+        for idx, sample in enumerate(pbar):
             input_ids, attn_mask = self.tokenize(sample)
             
             input_ids = input_ids.to(self.device)
@@ -178,9 +178,11 @@ class GSM8K(Execute):
             correctness = self.metric(dec_tok, gt)
             output.append(int(correctness))
             
+            acc = sum(output) / len(output)
+            pbar.set_description(f"Accuracy: {acc:.4f}")
 
-        avg = sum(output) / len(self.testset["dataset"])
-        self.logger.info(f"Average Score (exact match) = {avg:.2f}")
+        avg = sum(output) / len(output)
+        self.logger.info(f"Average Score (exact match) = {avg:.4f}")
         return output
 
 def compute_metric(output_filename):

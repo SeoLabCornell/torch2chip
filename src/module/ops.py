@@ -33,15 +33,17 @@ class BatchHeadIntMatMul(nn.Module):
         return z
 
 class IntActWeight(nn.Module):
-    def __init__(self, nbit:int):
+    def __init__(self, nbit:int, dtype=torch.float32):
         super().__init__()
         self.register_buffer("scale", torch.ones(1, 1, 1, dtype=torch.float32))
         self.nbit = nbit
+        self.dtype = dtype
 
     def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
         x = x.to(torch.int8)
+        y = y.to(torch.int8)
         z = t2c_gemm.bmw_int8(x, y, self.scale)
-        return z.to(torch.float16)
+        return z.to(self.dtype)
 
 class FloatMatMul(nn.Module):
     def __init__(self, nbit:int):
@@ -49,8 +51,5 @@ class FloatMatMul(nn.Module):
         self.nbit = nbit
 
     def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        x = x.float()
-        y = y.float()
-
         z = torch.matmul(x, y)
         return z

@@ -32,7 +32,7 @@ weight_quantizer = {
     "minmax_channel": MinMaxChannelWiseWeightQuantizer,
     "smooth": SmoothQuantizer,
     "smooth_channel": SmoothQuantChannelWiseWeightQuantizer,
-    "mx_channel": MXChannelWiseWeightQuantizer,
+    "mxint_quant": MXChannelWiseWeightQuantizer,
     "identity": _QBase
 }
 
@@ -133,7 +133,7 @@ class PTQ(object):
         handle = layer.register_forward_hook(hook)
 
         with torch.no_grad():
-            out = self.model(batch)
+            _ = self.model(batch)
 
         handle.remove()
         return hook.input[0].detach(), hook.output.detach()
@@ -290,7 +290,6 @@ class PTQ(object):
                 top1.update(prec1.item(), inputs.size(0))
                 top5.update(prec5.item(), inputs.size(0))
                 latency.append(lat)
-                break
             
         latency = np.array(latency)
 
@@ -340,9 +339,9 @@ class PTQViT(PTQ):
             layer.proj.wq = weight_quantizer[self.wqtype](nbit=self.wbit, train_flag=True).to(self.device)
 
         # low precision quantizer
-        layer.xq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
-        layer.qqkv = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
-        layer.qproj = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.qkv.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.qkv.yq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
+        layer.proj.aq = input_quantizer[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
         
         return layer
 

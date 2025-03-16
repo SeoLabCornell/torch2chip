@@ -45,7 +45,7 @@ class PruneResNet(Execute):
     def run(self):
         self.trainer.fit()
         self.trainer.valid_epoch()
-        self.logger.info("Baseline Model: Test accuracy = {:.3f}".format(self.trainer.logger_dict["valid_top1"]))
+        self.logger.info("Baseline Model: Test accuracy = {:.2f}".format(self.trainer.logger_dict["valid_top1"]))
 
 
 if __name__ == "__main__":

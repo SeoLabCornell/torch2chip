@@ -22,12 +22,11 @@ class SmoothQuantizer(_QBase):
         self.observer = MinMaxObserver(nbit=self.nbit, unsigned=self.unsigned)
 
     def q(self, x:torch.Tensor):
-        if self.train_flag:
-            # go through the observer
-            delta, zero_point = self.observer(x)
+        # go through the observer
+        delta, zero_point = self.observer(x)
 
-            self.scale.data = delta
-            self.zero_point.data = zero_point
+        self.scale.data = delta
+        self.zero_point.data = zero_point
 
         xr = round_ste(x / self.scale) + self.zero_point
         xq = torch.clamp(xr, min=self.qlb, max=self.qub)
@@ -37,7 +36,7 @@ class SmoothQuantizer(_QBase):
         if self.dequantize:
             xdq = xdq.mul(self.scale)
 
-        return xdq
+        return xdq.to(x.dtype)
     
     def trainFunc(self, input: torch.Tensor):
         xdq = self.q(input)
@@ -66,9 +65,6 @@ class SmoothQuantTokenWiseQuantizer(SmoothQuantizer):
     def __init__(self, nbit: int, train_flag: bool = True, unsigned: bool = True, num_tokens: int = 197):
         self.num_tokens = num_tokens
         super().__init__(nbit, train_flag, unsigned)
-
-        # smoother
-        self.smoother = MulShift()
 
         # observer
         self.observer = MinMaxTokenWiseObserver(nbit=self.nbit, unsigned=unsigned)

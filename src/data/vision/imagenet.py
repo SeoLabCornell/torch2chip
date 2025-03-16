@@ -8,6 +8,7 @@ import torchvision.transforms as transforms
 
 from torchvision import datasets
 from src.data.base import DataStage
+from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 class VisionData(DataStage):
     """
@@ -18,6 +19,8 @@ class VisionData(DataStage):
         self.train_dir = self.config["dataset"]["train_dir"]
         self.test_dir = self.config["dataset"]["test_dir"]
         self.num_samples = self.config["dataset"]["samples"]
+        self.mean = self.config["dataset"].get("mean", IMAGENET_DEFAULT_MEAN)
+        self.std = self.config["dataset"].get("std", IMAGENET_DEFAULT_STD)
 
     def __len__(self):
         return self.num_samples
@@ -32,24 +35,18 @@ class ImageNet1K(VisionData):
         return "ImageNet-1K"
     
     def prepare_transform(self):
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-
-        # mean = [0.5, 0.5, 0.5]
-        # std = [0.5, 0.5, 0.5]
-
         train = transforms.Compose([
             transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize(mean, std)
+            transforms.Normalize(self.mean, self.std)
         ])
 
         test = transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
-            transforms.Normalize(mean, std)
+            transforms.Normalize(self.mean, self.std)
         ])
 
         return train, test

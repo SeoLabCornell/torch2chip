@@ -1,18 +1,21 @@
 model:
-  model_type: "meta-llama/Llama-3.1-8B"
+  model_type: "meta-llama/Llama-3.2-3B-Instruct"
 
 dataset:
-  name: "wikitext"
-  path: "wikitext-2-raw-v1"
+  name: "mmlu"
+  train: "lm-dataset/mmlu/data/"
+  test: "lm-dataset/mmlu/data/test/"
+  cot: "lm-dataset/mmlu/data/dev/"
+  nshot: 5
   split: "test"
 
 save:
-  run_dir: "save/llama3.2-8B_wikitext/"
+  run_dir: "save/llama3.2-3B_mmlu/"
   logger: "inference.log"
 
 eval:
-  chunk_size: 2048
-  n_samples: 40
+  cot: True
+  max_gen_toks: 256
 
 quantization:
   wbit: 8
@@ -20,6 +23,7 @@ quantization:
   num_samples: 512
   wqtype: smooth_quant
   xqtype: smooth_quant_token
+  rescale_out: True
 
 train:
   batch_size: 512

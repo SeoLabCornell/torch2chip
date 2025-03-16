@@ -5,7 +5,7 @@ import os
 import torch
 
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from src.module.base import _QBaseLinear
+from src.module.base import _QBaseLinear, _QBase
 from src.module.attention import QLlamaAttention
 from src.module.mlp import QLlamaMLP
 from src.trainer.llm.metrics import Perplexity
@@ -13,6 +13,7 @@ from src.data.llm.hf import PileSubset
 from src.stage.base import Execute
 from src.t2c.convert import get_parent_name
 from src.quantization.smoothquant import SmoothQuantizer, SmoothQuantChannelWiseWeightQuantizer, SmoothQuantTokenWiseQuantizer, SmoothQuantChannelWeight4Bit, SmoothQuantMXINTChannelWise
+from src.quantization.mxint import MXChannelWiseWeightQuantizer
 from tqdm import tqdm
 from typing import Dict
 from collections import OrderedDict
@@ -20,13 +21,15 @@ from collections import OrderedDict
 WEIGHT_QUANTIZER_MAP = {
     "smooth_quant": SmoothQuantChannelWiseWeightQuantizer,
     "smooth_quant_4bit": SmoothQuantChannelWeight4Bit,
-    "smooth_quant_mxint": SmoothQuantMXINTChannelWise
+    "smooth_quant_mxint": SmoothQuantMXINTChannelWise,
+    "mxint_quant": MXChannelWiseWeightQuantizer,
+    "identity": _QBase
 }
-
 
 INPUT_QUANTIZER_MAP = {
     "smooth_quant": SmoothQuantizer,
-    "smooth_quant_token": SmoothQuantTokenWiseQuantizer
+    "smooth_quant_token": SmoothQuantTokenWiseQuantizer,
+    "identity": _QBase
 }
 
 
@@ -200,8 +203,6 @@ class SmoothQuant(LMPTQ):
             assert isinstance(fc, _QBaseLinear)
             fc.wq = WEIGHT_QUANTIZER_MAP[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(torch.float16)
             fc.aq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(torch.float16)
-            fc.yq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(torch.float16)
-
 
         device, dtype = fcs[0].weight.device, fcs[0].weight.dtype
         act_scales = act_scales.to(device=device, dtype=dtype)
@@ -229,8 +230,8 @@ class SmoothQuant(LMPTQ):
         qkv_smooth_scale = self.smooth_fcs_llama_like(qkv, qkv_input_scales, self.alpha)
 
         # special case for the down_proj
-        module.o_proj.wq = WEIGHT_QUANTIZER_MAP[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(torch.float16)
-        module.o_proj.aq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(torch.float16)
+        module.o_proj.wq = WEIGHT_QUANTIZER_MAP[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(self.device)
+        module.o_proj.aq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
         return qkv_smooth_scale
 
     def llama_mlp(self, module:QLlamaMLP, name:str, scales:Dict):
@@ -239,8 +240,8 @@ class SmoothQuant(LMPTQ):
         mlp_smooth_scale = self.smooth_fcs_llama_like(fcs, fcs_input_scales, self.alpha)
 
         # special case for the down_proj
-        module.down_proj.wq = WEIGHT_QUANTIZER_MAP[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(torch.float16)
-        module.down_proj.aq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(torch.float16)
+        module.down_proj.wq = WEIGHT_QUANTIZER_MAP[self.wqtype](nbit=self.wbit, train_flag=True, unsigned=False).to(self.device)
+        module.down_proj.aq = INPUT_QUANTIZER_MAP[self.xqtype](nbit=self.abit, train_flag=True, unsigned=False).to(self.device)
         return mlp_smooth_scale
 
     @torch.no_grad
@@ -263,7 +264,7 @@ class SmoothQuant(LMPTQ):
         # add quantizers to the model
         self.inject_quantizers(act_scales)
         return self.model
-    
+
 class SmoothQuantRetNet(SmoothQuant):
     def __init__(self, config_dir, model, tokenizer, logger):
         super().__init__(config_dir, model, tokenizer, logger)

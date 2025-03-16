@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools", "torch", "wheel", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "t2c_gemm"
+version = "0.1.0"
+description = "t2c_gemm: CUDA Extension of Torch2Chip"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+
+[tool.setuptools]
+py-modules = []

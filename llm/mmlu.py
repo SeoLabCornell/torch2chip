@@ -11,21 +11,30 @@ import argparse
 from transformers import AutoTokenizer
 from src.stage.base import Execute
 from src.trainer.llm.evaluator import MMLU
+from src.t2c.convert import Llama4Compress
+from src.trainer.llm.ptq import SmoothQuant
+from src.t2c.t2c import T2C
 
-parser = argparse.ArgumentParser(description='Llama')
+parser = argparse.ArgumentParser(description='LLM model evaluation against the MMLU benchmark')
 parser.add_argument('--config_dir', type=str, default=None, help="Path to the configuration file (.yaml)")
 args = parser.parse_args()
 
 class MMLUEval(Execute):
     def __init__(self, config_dir):
         super().__init__(config_dir)
-        self.model = self.create_model()
+        model = self.create_model()
         self.tokenizer = self.prepare_tokenizer()
+
+        wbit = self.config["quantization"]["wbit"]
+        abit = self.config["quantization"]["abit"]
+        converter = Llama4Compress(model, wbit=wbit, abit=abit)
+
+        # convert model
+        self.model = converter.convert()
 
         # initialize logging
         self.logger = self.initialize_logger()
-
-        self.task = MMLU(config_dir, self.model, self.tokenizer)
+        self.task = SmoothQuant(config_dir, self.model, self.tokenizer, self.logger)
     
     def register_run_dir(self):
         super().register_run_dir()
@@ -46,8 +55,21 @@ class MMLUEval(Execute):
 
         return tokenizer
     
+    def t2c(self, fake_quant_model):
+        t2c = T2C(model=fake_quant_model, config=self.config)
+        fused_model = t2c.fused_model()
+        self.print_arch(fused_model, "fused_model")
+        
+        evaluator = MMLU(self.config_dir, fused_model, self.tokenizer)
+        evaluator.run()
+    
+    def ptq(self):
+        fake_quantized_model = self.task.run()
+        return fake_quantized_model
+    
     def run(self):
-        self.task.run()
+        fake_quant_model = self.ptq()
+        fused_model = self.t2c(fake_quant_model)
 
 def starter():
     executor = MMLUEval(args.config_dir)

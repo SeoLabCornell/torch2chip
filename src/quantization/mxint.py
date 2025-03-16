@@ -6,7 +6,7 @@ Paper: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-sp
 
 import torch
 import torch.nn as nn
-from src.module.base import _QBase, round_ste
+from src.module.base import _QBase
 from src.quantization.observer import BaseObserver
 
 def _reshape_to_blocks(A, axes, block_size):
@@ -97,7 +97,7 @@ class MXINTObserver(BaseObserver):
         self.lb.copy_(-max_norm)
         self.ub.copy_(max_norm)
     
-    def get_shared_exp(self, x:torch.Tensor, axis=1) -> torch.Tensor:
+    def get_shared_exp(self, x:torch.Tensor, axis=0) -> torch.Tensor:
         shared_exp, _ = torch.max(torch.abs(x), dim=axis, keepdim=True)
         shared_exp = torch.floor(torch.log2(shared_exp))
         return shared_exp
@@ -115,6 +115,11 @@ class MXINTObserver(BaseObserver):
 
 
 class MXChannelWiseWeightQuantizer(_QBase):
+    """
+    Micro-scaling format for channel-wise weight quantization
+
+    [WARNING]: The current implementation of MXINT8 cannot be directly employed to the INT8 matmul kernel of t2c_gemm.
+    """
     def __init__(self, nbit: int, train_flag: bool = True, unsigned: bool = False, block_size:int=32):
         super().__init__(nbit, train_flag, unsigned)
 
@@ -134,7 +139,7 @@ class MXChannelWiseWeightQuantizer(_QBase):
             )
         elif len(x.shape) == 2:
             x, axes, orig_shape, padded_shape = _reshape_to_blocks(
-                x, [1], block_size=self.block_size
+                x, [0], block_size=self.block_size
             )
         else:
             raise NotImplementedError(f"Non-supported Layer Type with the shape of {list(x.size())}!")
@@ -160,10 +165,12 @@ class MXChannelWiseWeightQuantizer(_QBase):
 
         # rescale back
         xg = xg.mul(2**self.shared_exp)
-        xg = xg.mul(self.scale)
 
         # reshape the tensor
         xg = _undo_reshape_to_blocks(xg, padded_shape, orig_shape, axes)
+
+        if self.dequantize:
+            xg = xg.mul(self.scale)
 
         return xg
 

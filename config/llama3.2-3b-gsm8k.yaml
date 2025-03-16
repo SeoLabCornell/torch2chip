@@ -3,8 +3,8 @@ model:
 
 dataset:
   name: "gsm8k"
-  train: "/share/seo/llm_datasets/gsm8k/train.jsonl"
-  test: "/share/seo/llm_datasets/gsm8k/gsm8k_test.jsonl"
+  train: "lm-dataset/gsm8k/train.jsonl"
+  test: "lm-dataset/gsm8k/gsm8k_test.jsonl"
   split: "test"
 
 save:
@@ -13,7 +13,7 @@ save:
 
 eval:
   cot: True
-  max_gen_toks: 256
+  max_gen_toks: 512
 
 quantization:
   wbit: 8
@@ -21,6 +21,7 @@ quantization:
   num_samples: 512
   wqtype: smooth_quant
   xqtype: smooth_quant_token
+  rescale_out: True
 
 train:
   batch_size: 512

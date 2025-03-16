@@ -5,14 +5,12 @@ ResNet-50
 import sys
 sys.path.append("../torch2chip/")
 
-import torch
 import argparse
 from src.trainer.vision.ptq import PTQ
 from src.stage.base import Execute
 from src.t2c.convert import Vanilla4Compress
 from src.data.vision.imagenet import ImageNet1K
 from src.t2c.t2c import T2C
-from src.pruner.element import ElementPrune
 
 parser = argparse.ArgumentParser(description='Llama')
 parser.add_argument('--config_dir', type=str, default=None, help="Path to the configuration file (.yaml)")

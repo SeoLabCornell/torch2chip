@@ -3,22 +3,21 @@ import torch.nn as nn
 from src.t2c.convert import get_parent_name
 from src.module.attention import QAttention, QWindowAttention
 from src.module.base import _QBaseLinear, _QBase
-from src.module.fuse import MulQuant, LinearMulShift
+from src.module.fuse import MulQuant, MulShift
 from src.quantization.observer import BaseObserver, BaseTokenWiseObserver, BaseChannelWiseObserver
 
 from timm.layers import Mlp
 
 class ViTFuser(object):
-    def __init__(self, model: nn.Module):
+    def __init__(self, model: nn.Module, rescale_out:bool=False):
         self.model = model.eval()
+        self.rescale_out = rescale_out
 
     def inference(self):
         """
         Switch to inference mode
         """
-        for n, m in self.model.named_modules():
-            if hasattr(m, "inference"):
-                m.inference()
+        pass
 
     def layers(self):
         pass
@@ -29,92 +28,59 @@ class ViTFuser(object):
         if isinstance(xq.observer, BaseTokenWiseObserver):
             if isinstance(wq.observer, BaseChannelWiseObserver):
                 scale_w = scale_w.unsqueeze(0)
-                sall = scale_x @ scale_w.transpose(1,2)
-                sw = 1 / sall
+                sw = scale_x @ scale_w.transpose(1,2)
             else:
-                sw = 1 / (scale_x * scale_w)
+                sw = scale_x * scale_w
         else:
             if isinstance(wq.observer, BaseChannelWiseObserver):
                 scale_w = scale_w.unsqueeze(0).transpose(1,2)
-            sw = 1 / (scale_x * scale_w)
-        
+            sw = scale_x * scale_w
+
         return sw
 
     def fuse_linear(self, layer:_QBaseLinear):
-        new_layer = LinearMulShift(
-            layer.in_features,
-            layer.out_features,
-            wbit=layer.wq.nbit,
-            abit=layer.aq.nbit
-        )
-
         # switch to inference mode
         layer.inference()
-        
+        scaler = MulShift()
+
         # fetch the scaling factors
         sw = self.quantizer_fuse(layer.aq, layer.wq)
         bias = getattr(layer, "bias")
 
         # construct the scalers
-        new_layer.scaler.scale = sw
-        new_layer.scaler.bias.data = bias
+        scaler.scale = sw
+        scaler.bias.data = bias
 
-        setattr(new_layer, "linear", layer)
-
-        return new_layer
+        setattr(layer, "yq", scaler)
+        return layer
 
     def qkv_fuser(self, module:QAttention):
         module.inference()
 
         # fuse the scaling factors
-        sw = self.quantizer_fuse(module.xq, module.qkv.wq)
+        sw = self.quantizer_fuse(module.qkv.aq, module.qkv.wq)
+        sy = module.qkv.yq.scale
 
-        sqkv = module.qqkv.scale.mul(sw)
-        qbias = module.qkv.bias.mul(module.qqkv.scale)
-        q = MulQuant(nbit=module.qqkv.nbit)
+        # integer-only attention
+        if isinstance(module.qkv.yq.observer, BaseTokenWiseObserver):
+            qkscale = (sy @ sy.transpose(-2,-1))
+        elif isinstance(module.qkv.yq.observer, BaseObserver):
+            qkscale = sy.pow(2)
 
-        # update scaling and bias
-        q.scale.data = sqkv
-        q.bias.data = qbias
-        q.zero_point.data = module.qqkv.zero_point
+        module.attn_scale.scale = qkscale.mul(module.attn_scale.scale)
 
-        attn_scale = module.attn_scale.scale
-        scale = module.qqkv.scale.unsqueeze(0)
+        # replace the simple shifter to quantizer
+        scaler = MulQuant(nbit=module.qkv.aq.nbit, unsigned=module.qkv.aq.unsigned)
+        scaler.scale.data = sw.div(sy)
+        scaler.bias.data = module.qkv.bias.div(sy)
 
-        if isinstance(module.qqkv.observer, BaseTokenWiseObserver):
-            qkscale = (scale @ scale.transpose(2,3))
-        elif isinstance(module.qqkv.observer, BaseObserver):
-            qkscale = scale.pow(2)
-
-        module.attn_scale.scale.data = 1 / (qkscale) * attn_scale
-
-        # update qproj
-        sv = 1 / module.qqkv.scale
-        ssfmx = 1 / 255
-
-        # output quantizer
-        sproj = module.qproj.scale.mul(sv).mul(ssfmx)
-
-        if hasattr(module.qproj, "smoother"):
-            sproj = sproj.mul(module.qproj.smoother.scale)
-
-        qproj = MulQuant(nbit=module.qproj.nbit)
-        qproj.scale.data = sproj
-        qproj.zero_point.data = module.qproj.zero_point
-
-        # fuse the scaling factors
-        sdeq = self.quantizer_fuse(module.qproj, module.proj.wq)
-
-        # attention output: dequantize back
-        module.qkv_deq.scale.data = sdeq
-        module.qkv_deq.bias.data = module.proj.bias
-
-        # remove qqkv
-        setattr(module, "qqkv", q)
-        setattr(module, "qproj", qproj)
+        setattr(module.qkv, "yq", scaler)
+        proj = self.fuse_linear(module.proj)
+        proj.aq.scale.data.div_(sy)
+        setattr(module, "proj", proj)
 
         return module
-    
+
     def mlp_fuser(self, module:Mlp):
         fc1 = getattr(module, "fc1")
         fc2 = getattr(module, "fc2")
@@ -131,13 +97,12 @@ class ViTFuser(object):
 
         for n, m in self.model.named_modules():
             if isinstance(m, QAttention):
-                print(f"Fusing {n}")
                 parent_name, name = get_parent_name(n)
                 
                 module = self.qkv_fuser(m)
                 setattr(modules[parent_name], name, module)
+
             elif isinstance(m, Mlp):
-                print(f"Fusing {n}")
                 parent_name, name = get_parent_name(n)
 
                 module = self.mlp_fuser(m)
@@ -146,15 +111,12 @@ class ViTFuser(object):
         return self.model
 
 class SwinFuser(ViTFuser):
-    def __init__(self, model: nn.Module):
+    def __init__(self, model: nn.Module, rescale_out:bool=False):
         super().__init__(model)
+        self.rescale_out = rescale_out
 
     def qkv_fuser(self, module: QWindowAttention):
         module = super().qkv_fuser(module)
-        # pos_bias = module._get_rel_pos_bias()
-
-        # update the attn_scale
-        # module.attn_scale.bias.data = pos_bias
 
         return module
 
@@ -163,13 +125,11 @@ class SwinFuser(ViTFuser):
 
         for n, m in self.model.named_modules():
             if isinstance(m, QWindowAttention):
-                print(f"Fusing {n}")
                 parent_name, name = get_parent_name(n)
                 
                 module = self.qkv_fuser(m)
                 setattr(modules[parent_name], name, module)
             elif isinstance(m, Mlp):
-                print(f"Fusing {n}")
                 parent_name, name = get_parent_name(n)
 
                 module = self.mlp_fuser(m)

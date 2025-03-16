@@ -125,13 +125,13 @@ def main():
     )
 
     trainer.valid_epoch()
-    logger.info("[Before PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    logger.info("[Before PTQ] Test accuracy = {:.2f}".format(trainer.logger_dict["valid_top1"]))
 
     # start ptq
     trainer.fit()
 
     trainer.valid_epoch()
-    logger.info("[After PTQ] Test accuracy = {:.3f}".format(trainer.logger_dict["valid_top1"]))
+    logger.info("[After PTQ] Test accuracy = {:.2f}".format(trainer.logger_dict["valid_top1"]))
 
     state = {
         'state_dict': trainer.model.state_dict(),
