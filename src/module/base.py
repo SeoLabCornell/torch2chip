@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from src.quantization.observer import BaseObserver, BaseChannelWiseObserver, BaseTokenWiseObserver
-from src.module.ops import IntActWeight
+from src.module.ops import IntActWeight, FloatActWeight
 
 class ConvOPS(nn.Module):
     def __init__(self, stride:int=1, padding:int=0, dilation:int=1, groups:int=1):
@@ -210,7 +210,11 @@ class _QBaseLinear(nn.Linear):
         self.weight.requires_grad_(False)
         self.wq.inference()
         self.aq.inference()
-        self.ops = IntActWeight(nbit=8)
+
+        if self.aq.nbit > 8 or self.wq.nbit > 8:
+            self.ops = FloatActWeight()
+        else:
+            self.ops = IntActWeight(nbit=8)
 
     def fetch_yscale(self):
         scale_x = self.aq.scale
@@ -246,7 +250,7 @@ class _QBaseLinear(nn.Linear):
             scale_x, scale_w = self.fetch_yscale()
             y = y.mul(scale_x).mul(scale_w)
 
-        return y
+        return y.to(x.dtype)
 
     def forward(self, x:torch.Tensor):
         if self.train_flag:

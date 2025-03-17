@@ -44,6 +44,17 @@ class IntActWeight(nn.Module):
         y = y.to(torch.int8)
         z = t2c_gemm.bmw_int8(x, y, self.scale)
         return z.to(self.dtype)
+    
+class FloatActWeight(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
+        x = x.to(torch.float32)
+        y = y.to(torch.float32)
+        
+        z = torch.matmul(x, y.transpose(0,1))
+        return z.to(x.dtype)
 
 class FloatMatMul(nn.Module):
     def __init__(self, nbit:int):

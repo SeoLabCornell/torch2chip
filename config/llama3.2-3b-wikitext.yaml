@@ -18,7 +18,7 @@ eval:
 
 quantization:
   wbit: 8
-  abit: 8
+  abit: 16
   num_samples: 2048
   wqtype: smooth_quant
   xqtype: smooth_quant_token
