@@ -155,6 +155,7 @@ class SmoothQuant(LMPTQ):
     def __init__(self, config_dir, model, tokenizer, logger):
         super().__init__(config_dir, model, tokenizer, logger)
         self.alpha = self.config["smooth"]["alpha"]
+        self.smooth = self.config["smooth"].get("flag", True)
         print(f"Smooth Quant: alpha = {self.alpha}")
 
     def smooth_factor(self, xmax, wmax):
@@ -181,7 +182,10 @@ class SmoothQuant(LMPTQ):
         for n, m in hooks.items():
             if not "down_proj" in n:
                 xmax = hooks[n].max
-                act_scales[n] = xmax
+                if self.smooth:
+                    act_scales[n] = xmax
+                else:    
+                    act_scales[n] = torch.ones_like(xmax)
                 
                 handles[n].remove()
 

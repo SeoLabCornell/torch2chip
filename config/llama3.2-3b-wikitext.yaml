@@ -29,6 +29,7 @@ train:
 
 smooth:
   alpha: 0.85
+  flag: False
 
 t2c:
   swl: 32

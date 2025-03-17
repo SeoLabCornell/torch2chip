@@ -13,3 +13,4 @@ tmp/
 .vscode/
 build/
 submodules/
+tests/
