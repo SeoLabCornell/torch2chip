@@ -56,13 +56,34 @@ def matmul_optimized_cache(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
-    ACTIVATION: tl.constexpr
+    SPLIT_K: tl.constexpr,
 ):
     # program_id along the row dimension
     pid = tl.program_id(axis=0)
+    pid_sp_k = tl.program_id(axis=1)
+
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+
+    pid_m = first_pid_m + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+    offs_k = pid_sp_k * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+
+    # creating pointers
+    A_ptr = A_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    B_ptr = B_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+
+    z = torch.empty(BLOCK_SIZE_M, BLOCK_SIZE_N)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K * SPLIT_K)):
+        pass
+
 
 
 def matmul_func(

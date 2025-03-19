@@ -30,6 +30,7 @@ class GSM8KEval(Execute):
 
         # convert model
         self.model = converter.convert()
+        self.model = self.model.to(self.device)
 
         # initialize logging
         self.logger = self.initialize_logger()

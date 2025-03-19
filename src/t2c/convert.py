@@ -535,15 +535,14 @@ class Llama4Compress(Vanilla4Compress):
         return module
     
     def attn(self, attn:LlamaAttention):
-        new_attn = QLlamaAttention(attn.config, attn.layer_idx).cuda()
+        new_attn = QLlamaAttention(attn.config, attn.layer_idx)
         new_attn.load_state_dict(attn.state_dict(), strict=False)
 
         new_attn = self.to_half(new_attn)
         return new_attn
 
     def mlp(self, mlp:LlamaMLP):
-        new_module = QLlamaMLP(config=mlp.config).to(self.model.device)
-        # new_module = new_module.to(torch.float16)
+        new_module = QLlamaMLP(config=mlp.config)
         new_module.load_state_dict(mlp.state_dict(), strict=False)
 
         new_module = self.to_half(new_module)
@@ -551,6 +550,9 @@ class Llama4Compress(Vanilla4Compress):
 
     def convert(self):
         modules = dict(self.model.named_modules(remove_duplicate=True))
+
+        # avoid mem explosion
+        self.model = self.model.to(torch.device("cpu"))
 
         for n, m in modules.items():
             if isinstance(m, LlamaAttention):

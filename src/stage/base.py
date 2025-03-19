@@ -81,7 +81,8 @@ class Execute:
         model = model_func.fetch()
 
         # map to device
-        model.to(self.device)
+        if self.device != model.device:
+            model.to(self.device)
         return model
 
     def output(self):
