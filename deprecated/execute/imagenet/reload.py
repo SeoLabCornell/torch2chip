@@ -15,7 +15,7 @@ from src.module.base import _QBaseConv2d, _QBaseLinear
 from src.utils.utils import str2bool
 from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
-from src.trainer.pruning import STrainer
+from src.trainer.vision.pruning import STrainer
 from src.t2c.t2c import T2C
 from src.trainer.vision.ptq import PTQ, PTQViT
 from src.t2c.convert import Vanilla4Compress, ViTV4C

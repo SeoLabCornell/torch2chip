@@ -1,0 +1,44 @@
+seed: 5000
+
+model:
+  model_type: "Qwen/Qwen2.5-1.5B-Instruct"
+
+dataset:
+  name: "gsm8k"
+  train: "lm-dataset/gsm8k/train.jsonl"
+  test: "lm-dataset/gsm8k/gsm8k_test.jsonl"
+  split: "test"
+
+save:
+  run_dir: "save/Qwen2.5-1.5B_gsm8k/"
+  logger: "inference.log"
+
+eval:
+  cot: True
+  max_gen_toks: 512
+  dryrun: True
+
+quantization:
+  wbit: 8
+  abit: 8
+  num_samples: 512
+  wqtype: smooth_quant
+  xqtype: smooth_quant_token
+  rescale_out: True
+
+train:
+  batch_size: 512
+
+smooth:
+  alpha: 0.85
+
+t2c:
+  swl: 32
+  sfl: 26
+  save_model: False
+  save_tensors: False
+  xdtype: 16
+  ydtype: 32
+
+export:
+  export_samples: 1

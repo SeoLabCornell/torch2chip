@@ -83,6 +83,9 @@ class GSM8K(Execute):
         self.max_gen_toks = self.config["eval"]["max_gen_toks"]
         self.gen_until = ['<|eot_id|>', '<|start_header_id|>user<|end_header_id|>', 'Q:', '</s>', '<|im_end|>']
 
+        # dryrun
+        self.dryrun = self.config["eval"].get("dryrun", False)
+
     def __name__(self):
         return "GSM8K"
     
@@ -181,9 +184,27 @@ class GSM8K(Execute):
             acc = sum(output) / len(output)
             pbar.set_description(f"Accuracy: {acc:.4f}")
 
+            if self.dryrun:
+                self.logger.info(f"Dry run!")
+                break
+
         avg = sum(output) / len(output)
         self.logger.info(f"Average Score (exact match) = {avg:.4f}")
         return output
+    
+    @torch.no_grad
+    def export_run(self, export_samples:int):
+        dataset = self.testset["dataset"]
+
+        for i in tqdm(range(export_samples)):
+            sample = dataset[i]
+            input_ids, attn_mask = self.tokenize(sample)
+            
+            input_ids = input_ids.to(self.device)
+            attn_mask = attn_mask.to(self.device)
+
+            tok = self.generate(input_ids, attn_mask)
+
 
 def compute_metric(output_filename):
     with open(output_filename, 'r') as f:
@@ -276,6 +297,8 @@ class MMLU(Execute):
             'world_religions'
         ]
 
+        self.dryrun = self.config["eval"].get("dryrun", False)
+
     def tokenize(self, prompt):
         encoding = self.tokenizer.batch_encode_plus([prompt], return_tensors="pt", padding=True)
         return encoding["input_ids"], encoding["attention_mask"]
@@ -335,7 +358,14 @@ class MMLU(Execute):
 
                 acc_avg.append(acc)
 
+                if self.dryrun:
+                    break
+
             run_results[task] = {'pred_answers':pred, 'gold_answers':golden_output}
+
+            if self.dryrun:
+                self.logger.info(f"Dry run!")
+                break
 
         output_filename = os.path.join(self.run_dir, "accuracy.json")
         

@@ -16,6 +16,7 @@ save:
 eval:
   cot: True
   max_gen_toks: 512
+  dryrun: False
 
 quantization:
   wbit: 8
@@ -34,6 +35,10 @@ smooth:
 t2c:
   swl: 32
   sfl: 26
+  save_model: False
+  save_tensors: False
+  xdtype: 16
+  ydtype: 32
 
 export:
   export_samples: 0

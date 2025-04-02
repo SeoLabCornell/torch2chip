@@ -28,15 +28,15 @@ class SmoothQuantizer(_QBase):
         self.scale.data = delta
         self.zero_point.data = zero_point
 
-        xr = round_ste(x / self.scale) + self.zero_point
+        xr = x.div(self.scale).round() + self.zero_point
         xq = torch.clamp(xr, min=self.qlb, max=self.qub)
-        xdq = xq.sub(self.zero_point)
+        xq = xq.sub(self.zero_point)
 
         # dequantize
         if self.dequantize:
-            xdq = xdq.mul(self.scale)
+            xq = xq.mul(self.scale)
 
-        return xdq.to(x.dtype)
+        return xq.to(x.dtype)
     
     def trainFunc(self, input: torch.Tensor):
         xdq = self.q(input)

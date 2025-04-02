@@ -1,0 +1,51 @@
+model:
+  model_type: "resnet18"
+
+dataset:
+  name: "ImageNet-1K"
+  path: "/scratch/dataset/imagenet-1k/"
+  split: "train"
+  train_dir: "/scratch/dataset/imagenet-1k/train/"
+  test_dir: "/scratch/dataset/imagenet-1k/val/"
+  samples: -1
+  num_workers: 16
+  num_classes: 1000
+
+save:
+  run_dir: "save/imagenet100/resnet18/m4n1/"
+  logger: "training.log"
+
+quantization:
+  wbit: 8
+  abit: 8
+  wqtype: adaround
+  xqtype: lsq
+  requires_grad: True
+
+train:
+  lr: 0.001
+  momentum: 0.9
+  epochs: 10
+  weight_decay: 0.0001
+  batch_size: 1024
+  loss_type: "cross_entropy"
+  optim_type: sgd
+  lr_sch: "step"
+  warmup: 5
+  mix_prec: True
+  smoothing: 0.1
+  schedule: [30, 60, 90]
+
+prune:
+  drate: 0.5
+  prune_ratio: 0.5
+  type: "nm"
+  warmup: 5
+  final_epoch: 160
+  prune_freq: 4000
+  M: 4
+  N: 1
+
+t2c:
+  swl: 32
+  sfl: 26

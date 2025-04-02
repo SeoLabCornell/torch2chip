@@ -1,3 +1,5 @@
+seed: 5000
+
 model:
   model_type: "meta-llama/Llama-3.1-8B-Instruct"
 
@@ -16,13 +18,14 @@ save:
 eval:
   cot: True
   max_gen_toks: 256
+  dryrun: True
 
 quantization:
-  wbit: 8
-  abit: 8
+  wbit: 16
+  abit: 16
   num_samples: 512
-  wqtype: smooth_quant
-  xqtype: smooth_quant_token
+  wqtype: identity
+  xqtype: identity
   rescale_out: True
 
 train:
@@ -34,6 +37,10 @@ smooth:
 t2c:
   swl: 32
   sfl: 26
+  save_model: False
+  save_tensors: False
+  xdtype: 16
+  ydtype: 32
 
 export:
   export_samples: 0

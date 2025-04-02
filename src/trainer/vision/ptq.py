@@ -121,6 +121,8 @@ class PTQ(object):
         # steps
         self.steps = len(self.trainloader)
 
+        self.dryrun = self.config["eval"].get("dryrun", False)
+
     def freeze(self, layer:Union[nn.Conv2d, nn.Linear]):
         hasbias = layer.bias is not None
 
@@ -290,6 +292,10 @@ class PTQ(object):
                 top1.update(prec1.item(), inputs.size(0))
                 top5.update(prec5.item(), inputs.size(0))
                 latency.append(lat)
+
+                if self.dryrun:
+                    self.logger.info("Dry Run!")
+                    break
             
         latency = np.array(latency)
 

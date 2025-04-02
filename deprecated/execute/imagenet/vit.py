@@ -12,7 +12,7 @@ import torch
 from src.utils.utils import str2bool, save_checkpoint
 from src.utils.get_data import get_ptq_dataloader
 from src.trainer.base import Trainer
-from src.trainer.pruning import STrainer
+from src.trainer.vision.pruning import STrainer
 from src.trainer.vision.ptq import PTQ, PTQViT
 from src.trainer.vision.smoothquant import SmoothQuantPTQViT
 from src.t2c.convert import ViTV4C

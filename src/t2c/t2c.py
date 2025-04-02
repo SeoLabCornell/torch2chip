@@ -8,13 +8,13 @@ from typing import List
 
 from src.module.fuse import MulShift
 from src.module.base import ConvOPS
-from src.module.ops import FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight 
+from src.module.ops import FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight, FloatActWeight
 from src.t2c.fusers.resnet import ResNet18Fuser, ResNet34Fuser, ResNet50Fuser
 from src.t2c.fusers.vgg import VGGFuser
 from src.t2c.fusers.vit import ViTFuser, SwinFuser
 from src.t2c.fusers.mobilenet import MobileNetV1Fuser
 from src.t2c.fusers.bert import BERTFuser
-from src.t2c.fusers.lm import LlamaFuser
+from src.t2c.fusers.lm import LlamaFuser, QWenFuser
 
 from fxpmath import Fxp
 
@@ -34,7 +34,9 @@ FUSERS = {
     "meta-llama/Llama-3.2-1B-Instruct": LlamaFuser,
     "meta-llama/Llama-3.2-3B-Instruct": LlamaFuser,
     "meta-llama/Llama-3.1-8B-Instruct": LlamaFuser,
-    "meta-llama/Llama-2-7b-hf": LlamaFuser
+    "meta-llama/Llama-2-7b-hf": LlamaFuser,
+    "Qwen/Qwen2.5-1.5B-Instruct": QWenFuser,
+    "Qwen/Qwen2.5-1.5B": QWenFuser
 }
 
 def feature_hook(name, state_dict):
@@ -103,7 +105,7 @@ class T2C(object):
     
     def hook(self):
         for n, m in self.model.named_modules():
-            if isinstance(m, (FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight, ConvOPS)):
+            if isinstance(m, (FloatMatMul, BatchHeadIntMatMul, BatchIntMatMul, IntActWeight, ConvOPS, FloatActWeight)):
                 m.register_forward_hook(feature_hook(n, self.node_dict))
     
     def register_node(self):
@@ -205,3 +207,12 @@ class T2C(object):
 
         # save model and tensors
         self.save(path)
+
+def get_stats_dict(x:torch.Tensor):
+    stats = {
+        "mean": x.mean().item(),
+        "std": x.std().item(),
+        "min": x.min().item(),
+        "max": x.max().item(),
+    }
+    return stats

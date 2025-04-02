@@ -1,0 +1,43 @@
+seed: 5000
+
+model:
+  model_type: "Qwen/Qwen2.5-1.5B"
+
+dataset:
+  name: "wikitext"
+  path: "wikitext-2-raw-v1"
+  split: "test"
+
+save:
+  run_dir: "save/Qwen2.5-1.5B-wikitext/"
+  logger: "inference.log"
+
+eval:
+  chunk_size: 2048
+  n_samples: 40
+  dryrun: True
+
+quantization:
+  wbit: 8
+  abit: 8
+  num_samples: 2048
+  wqtype: smooth_quant
+  xqtype: smooth_quant_token
+  rescale_out: True
+
+train:
+  batch_size: 2048
+
+smooth:
+  alpha: 0.85
+
+t2c:
+  swl: 32
+  sfl: 26
+  save_model: False
+  save_tensors: False
+  xdtype: 16
+  ydtype: 32
+
+export:
+  export_samples: 1

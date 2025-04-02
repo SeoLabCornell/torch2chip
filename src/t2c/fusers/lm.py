@@ -67,3 +67,7 @@ class LMFuser(object):
 class LlamaFuser(LMFuser):
     def __init__(self, fake_quant_model, rescale_out:bool=False):
         super().__init__(fake_quant_model, rescale_out)
+
+class QWenFuser(LMFuser):
+    def __init__(self, fake_quant_model, rescale_out = False):
+        super().__init__(fake_quant_model, rescale_out)

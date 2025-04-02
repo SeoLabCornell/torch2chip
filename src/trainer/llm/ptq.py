@@ -5,6 +5,7 @@ import os
 import torch
 
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
 from src.module.base import _QBaseLinear, _QBase
 from src.module.attention import QLlamaAttention
 from src.module.mlp import QLlamaMLP
@@ -139,7 +140,7 @@ class LMPTQ(Execute):
             batch = batch.to(self.device)
 
             shift_labels = batch[:, 1:]
-            logits = self.forward_step(batch)
+            logits = self.forward_step(batch.long())
 
             shift_logits = logits[:, :-1, :].contiguous().float()
             self.metric.update(shift_logits, shift_labels)
@@ -251,7 +252,7 @@ class SmoothQuant(LMPTQ):
     @torch.no_grad
     def inject_quantizers(self, act_scales:Dict):
         for n, m in self.model.named_modules():
-            if isinstance(m, LlamaDecoderLayer):
+            if isinstance(m, (LlamaDecoderLayer, Qwen2DecoderLayer)):
                 qkv_smooth_scales = self.llama_attn(m.self_attn, n, act_scales)
                 mlp_smooth_scale = self.llama_mlp(m.mlp, n, act_scales)
 

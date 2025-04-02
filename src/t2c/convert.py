@@ -8,8 +8,8 @@ import torch.nn as nn
 from typing import Tuple
 from src.module.base import _QBaseLinear, _QBaseConv2d, _QBase
 from src.module.fuse import MulQuant, MulShift
-from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention, QLlamaAttention, QMultiScaleRetention
-from src.module.mlp import QLlamaMLP, QGLU
+from src.module.attention import QAttention, QWindowAttention, QBertSelfAttention, QLlamaAttention, QMultiScaleRetention, QQWen2Attention
+from src.module.mlp import QLlamaMLP, QQwen2MLP
 from src.quantization.adaround import AdaRound
 from src.quantization.lsq import LSQ, LSQTokenWise
 from src.quantization.qdrop import QDrop, QDropTokenWise
@@ -22,9 +22,8 @@ from timm.models.vision_transformer import Attention
 from timm.models.swin_transformer import WindowAttention
 from timm.layers import Mlp
 from transformers.models.bert.modeling_bert import BertSelfAttention, BertSelfOutput
-
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaMLP
-
+from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, Qwen2MLP
 
 from typing import Union, Dict
 
@@ -49,6 +48,7 @@ input_quantizer = {
     "qdrop_token": QDropTokenWise,
     "identity": _QBase
 }
+
 def get_parent_name(target:str) -> Tuple[str, str]:
     r = target.rsplit(".", 1)
     if len(r) == 1:
@@ -62,6 +62,12 @@ class Vanilla4Compress(object):
         self.wbit = wbit
         self.abit = abit
         self.state_dict = state_dict
+
+    def to_half(self, module:nn.Module):
+        for param in module.parameters():
+            param.data = param.data.to(torch.float16)
+
+        return module
 
     def conv(self, layer:nn.Conv2d):
         has_bias = layer.bias is not None
@@ -527,22 +533,21 @@ class BERT4Compress(Vanilla4Compress):
 class Llama4Compress(Vanilla4Compress):
     def __init__(self, model: nn.Module, wbit: int = 8, abit: int = 8, state_dict: Dict = None) -> None:
         super().__init__(model, wbit, abit, state_dict)
+        self.attn_cls = LlamaAttention
+        self.mlp_cls = LlamaMLP
 
-    def to_half(self, module:nn.Module):
-        for param in module.parameters():
-            param.data = param.data.to(torch.float16)
-
-        return module
+        self.qattn_cls = QLlamaAttention
+        self.qmlp_cls = QLlamaMLP
     
-    def attn(self, attn:LlamaAttention):
-        new_attn = QLlamaAttention(attn.config, attn.layer_idx)
+    def attn(self, attn):
+        new_attn = self.qattn_cls(attn.config, attn.layer_idx)
         new_attn.load_state_dict(attn.state_dict(), strict=False)
 
         new_attn = self.to_half(new_attn)
         return new_attn
 
-    def mlp(self, mlp:LlamaMLP):
-        new_module = QLlamaMLP(config=mlp.config)
+    def mlp(self, mlp):
+        new_module = self.qmlp_cls(config=mlp.config)
         new_module.load_state_dict(mlp.state_dict(), strict=False)
 
         new_module = self.to_half(new_module)
@@ -555,12 +560,12 @@ class Llama4Compress(Vanilla4Compress):
         self.model = self.model.to(torch.device("cpu"))
 
         for n, m in modules.items():
-            if isinstance(m, LlamaAttention):
+            if isinstance(m, self.attn_cls):
                 parent_name, name = get_parent_name(n)
                 new_module = self.attn(m)
                 setattr(modules[parent_name], name, new_module)
 
-            elif isinstance(m, LlamaMLP):
+            elif isinstance(m, self.mlp_cls):
                 parent_name, name = get_parent_name(n)
                 new_module = self.mlp(m)
                 setattr(modules[parent_name], name, new_module)
@@ -572,6 +577,14 @@ class Llama4Compress(Vanilla4Compress):
         qmodel = self.assign_quantizer(qmodel, wqtype=wqtype, xqtype=xqtype)
         return qmodel
     
+class QWen4Compress(Llama4Compress):
+    def __init__(self, model, wbit = 8, abit = 8, state_dict = None):
+        super().__init__(model, wbit, abit, state_dict)
+        self.attn_cls = Qwen2Attention
+        self.mlp_cls = Qwen2MLP
+
+        self.qattn_cls = QQWen2Attention
+        self.qmlp_cls = QQwen2MLP
 
 class RetNet4Compress(Vanilla4Compress):
     def __init__(self, model: nn.Module, wbit: int = 8, abit: int = 8, state_dict: Dict = None) -> None:
@@ -614,3 +627,14 @@ class RetNet4Compress(Vanilla4Compress):
                 setattr(modules[parent_name], name, new_module)
 
         return self.model
+    
+
+CONVERTNN = {
+    "meta-llama/Llama-2-7b-hf": Llama4Compress,
+    "meta-llama/Llama-3.2-1B-Instruct": Llama4Compress,
+    "meta-llama/Llama-3.2-3B-Instruct": Llama4Compress,
+    "meta-llama/Llama-3.1-8B-Instruct": Llama4Compress,
+    "meta-llama/Llama-3.1-8B": Llama4Compress,
+    "Qwen/Qwen2.5-1.5B": QWen4Compress,
+    "Qwen/Qwen2.5-1.5B-Instruct": QWen4Compress
+}

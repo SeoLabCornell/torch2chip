@@ -2,9 +2,52 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import time
+from torch import inf
 from src.utils.utils import accuracy, AverageMeter, print_table, convert_secs2time, save_checkpoint
 from src.trainer.scheduler import LabelSmoothingCrossEntropyLoss, LinearWarmupCosineAnnealingLR
 from tqdm import tqdm
+
+def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    parameters = [p for p in parameters if p.grad is not None]
+    norm_type = float(norm_type)
+    if len(parameters) == 0:
+        return torch.tensor(0.)
+    device = parameters[0].grad.device
+    if norm_type == inf:
+        total_norm = max(p.grad.detach().abs().max().to(device) for p in parameters)
+    else:
+        total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), norm_type)
+    return total_norm
+
+class NativeScalerWithGradNormCount:
+    state_dict_key = "amp_scaler"
+
+    def __init__(self):
+        self._scaler = torch.amp.GradScaler()
+
+    def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
+        self._scaler.scale(loss).backward(create_graph=create_graph)
+        if update_grad:
+            if clip_grad is not None:
+                assert parameters is not None
+                self._scaler.unscale_(optimizer)  # unscale the gradients of optimizer's assigned params in-place
+                norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
+            else:
+                self._scaler.unscale_(optimizer)
+                norm = get_grad_norm_(parameters)
+            self._scaler.step(optimizer)
+            self._scaler.update()
+        else:
+            norm = None
+        return norm
+
+    def state_dict(self):
+        return self._scaler.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self._scaler.load_state_dict(state_dict)
 
 class Trainer(object):
     r"""Base deep neural network trainer. 
@@ -55,9 +98,11 @@ class Trainer(object):
         # learning rate scheduler
         if lr_sch == "step":
             self.lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=train_config["schedule"], last_epoch=-1)
-        elif lr_sch == "cos":
+        
+        if lr_sch == "cos":
             self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=1e-5)
-        elif lr_sch == "cos_warmup":
+        
+        if lr_sch == "cos_warmup":
             warmup = self.config["train"].get("warmup", 1)
             self.lr_scheduler = LinearWarmupCosineAnnealingLR(self.optimizer, warmup, max_epochs=self.epochs, warmup_start_lr=train_config["lr"], eta_min=1e-5)
 
@@ -142,11 +187,12 @@ class Trainer(object):
 
         self.model.train()
 
+        import pdb;pdb.set_trace()
         for idx, (inputs, target) in enumerate(tqdm(self.trainloader)):
             if self.use_cuda:
                 inputs = inputs.cuda()
                 target = target.cuda(non_blocking=True)
-            
+
             out, loss = self.train_step(inputs, target)
             prec1, prec5 = accuracy(out.data, target, topk=(1, 5))
 

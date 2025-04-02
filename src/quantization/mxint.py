@@ -139,7 +139,7 @@ class MXChannelWiseWeightQuantizer(_QBase):
             )
         elif len(x.shape) == 2:
             x, axes, orig_shape, padded_shape = _reshape_to_blocks(
-                x, [0], block_size=self.block_size
+                x, [1], block_size=self.block_size
             )
         else:
             raise NotImplementedError(f"Non-supported Layer Type with the shape of {list(x.size())}!")

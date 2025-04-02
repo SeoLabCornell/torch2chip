@@ -14,14 +14,14 @@ save:
 
 eval:
   chunk_size: 2048
-  n_samples: 16
+  n_samples: 40
 
 quantization:
-  wbit: 8
+  wbit: 16
   abit: 16
   num_samples: 2048
-  wqtype: smooth_quant
-  xqtype: smooth_quant_token
+  wqtype: identity
+  xqtype: identity
   rescale_out: True
 
 train:
@@ -34,6 +34,8 @@ smooth:
 t2c:
   swl: 32
   sfl: 26
+  save_model: False
+  save_tensors: False
 
 export:
-  export_samples: 0
+  export_samples: 1

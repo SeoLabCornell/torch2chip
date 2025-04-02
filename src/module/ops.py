@@ -50,8 +50,8 @@ class FloatActWeight(nn.Module):
         super().__init__()
 
     def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        x = x.to(torch.float32)
-        y = y.to(torch.float32)
+        x = x.to(torch.float16)
+        y = y.to(torch.float16)
         
         z = torch.matmul(x, y.transpose(0,1))
         return z.to(x.dtype)

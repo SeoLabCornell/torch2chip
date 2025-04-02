@@ -13,7 +13,7 @@ sys.path.append("../torch2chip/")
 from src.utils.ddp import init_distributed_mode, get_world_size
 from src.utils.utils import str2bool
 from src.utils.get_data import get_loader
-from src.trainer.pruning import STrainer
+from src.trainer.vision.pruning import STrainer
 from src.t2c.convert import ViTV4C
 from timm.models.vision_transformer import vit_base_patch16_224
 
